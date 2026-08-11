@@ -387,6 +387,60 @@ STOP and surface it.
 
 ---
 
+## §9.8 — Local inference server memory hygiene
+
+**RULE 9.8.1 — Check the local model server's REAL memory with `footprint`, never `ps`/RSS.**
+```bash
+footprint -p <server-pid> | grep phys_footprint
+```
+`ps aux`'s RSS column has been observed under-reporting an MLX/Metal server's actual physical
+footprint by more than **15x** (7.6GB reported vs. 119GB actual, confirmed via `footprint` and
+Activity Monitor). Unified-memory GPU buffers are real physical pages the process owns, but
+standard `ps` accounting does not surface them for this kind of process. Do not trust `ps` for
+any local-model memory question; use `footprint -p <pid>` or Activity Monitor's Memory column.
+
+**RULE 9.8.2 — A long-lived local server accumulates memory across dispatches; check it
+periodically, not just when something feels slow.** After every few Strong Card dispatches to
+the local worker (or on any swap-pressure report), run the `footprint` check above. There is no
+purge/cache-clear endpoint on the mtplx server (`/reset`, `/purge`, `/cache/clear`,
+`/admin/reset` all 404, verified 2026-08-11) — the only way to reclaim memory is
+`mtplx stop --port <port>` followed by a fresh `mtplx quickstart`/`serve` with the same flags.
+The in-process RAM session cache is capped by config (`ram_session_cache_max_size`, 8GB
+default) and is **not** the source of unbounded growth — the growth is elsewhere in the
+long-lived process (KV-cache/buffer accumulation across many separate requests over days of
+uptime), so lowering that setting does not fix this.
+
+**RULE 9.8.3 — Restart trigger: physical footprint materially exceeds a healthy baseline for
+the model, while idle (no request in flight).** There is no universal number — set the
+baseline from the model's own size (a 27B 4-bit model's healthy steady-state is roughly
+15-30GB even at large context; anything holding 2-3x that with nothing running is a candidate
+for a restart, and anything approaching total system RAM is not optional, restart it). Confirm
+idle first (no active dispatch depending on that server) before restarting — killing it
+mid-dispatch loses that card's in-flight work; either wait for the current dispatch to finish
+naturally or, if urgent, explicitly kill the dispatch and re-queue the card fresh, operator's
+call each time.
+
+**RULE 9.8.4 — Restart with the exact prior flags, not a bare quickstart.** Capture the running
+process's full command line (`ps -o command= -p <pid>`) before stopping it, so the restart
+reproduces the same model, `--depth`, `--reasoning-mode`, `--paged-kv-quantization`, etc. — a
+silently-different config on restart is a correctness risk for whatever dispatches next, not
+just a performance one.
+
+> **Why.** 2026-08-11: the mtplx server backing the local worker (`qwen3.6-27b-fable-fusion`,
+> up since Sunday, serving multiple Strong Card dispatches across days) was measured via
+> Activity Monitor at 119.17GB resident — on a 128GB machine, with swap at 43.11/44.00GB (98%
+> full). `footprint -p <pid>` confirmed `phys_footprint: 119 GB`, `phys_footprint_peak: 140 GB`
+> — the peak **exceeded total physical RAM**, meaning this process alone had already forced the
+> system into heavy compression/swap before anyone noticed. The first investigation pass used
+> `ps aux` RSS and found only 7.6GB for the same PID — a false-negative that nearly misdirected
+> the fix toward killing unrelated orphaned processes (`The_Studio` dev servers, real but not
+> the cause) instead of the actual culprit. Operator, verbatim: *"dude the POC when we ask them
+> THEY MUST BE CLEANED"* (on the orphans, separately correct) followed by *"New rule, monitor
+> the ram and when the inference server is getting too high for nothing after a few run,
+> restart it fresh."*
+
+---
+
 ## §10 — Trace and tracker discipline
 
 **RULE 10.1 — Keep a live tracker, one row per card.** Columns: ID, title, status, **independently
