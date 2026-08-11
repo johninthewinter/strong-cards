@@ -325,9 +325,12 @@ not assumed).** `pi` (real CLI, `/opt/homebrew/bin/pi`) is configured with three
 `local-ds4` (port 8010, a second local DeepSeek model), and `qwencloud` (routed through a local
 broker on port 18020 to Qwen Cloud's Token Plan, hosting `deepseek-v4-flash-0731` — already the
 session default provider/model in `~/.pi/agent/settings.json`, so a bare `pi -p "<card>"` hits
-DeepSeek Flash 0731 unless overridden). Dispatch shape:
+DeepSeek Flash 0731 unless overridden). Dispatch shape — **`--no-autoformat` is mandatory
+whenever the target repo has no committed `biome.json`/`.prettierrc` (RULE 9.9 point 7);
+without it, `pi-lens`'s Biome auto-format silently reformats every touched file regardless of
+model:**
 ```bash
-cd ../.wt/card-<slug> && pi -p "$(cat card.md)" --provider <local-mlx|local-ds4|qwencloud> --model <id>
+cd ../.wt/card-<slug> && pi -p "$(cat card.md)" --provider <local-mlx|local-ds4|qwencloud> --model <id> --no-autoformat
 ```
 **`pi` has no `--dir`/`--cwd` flag** (confirmed against `pi --help`) — unlike opencode, its
 sandbox boundary is whatever directory it actually runs in. Always launch it with an explicit
@@ -378,6 +381,135 @@ discard the run as evidence for the routing question it was run to answer.
 > checks are about actor identity. §5's "self-reports are never acceptance evidence" doesn't
 > cover this either — §5 governs artifact-checkable claims (pass counts, "pre-existing"); actor
 > identity has no artifact-side falsification test, which is why it needs its own rule.
+
+**RULE 9.9 — Whitespace/formatting drift under Pi headless (`pi -p`) dispatch is a known
+defect of the harness, not a specific model; fix it mechanically, never via a repeated prose
+retry or a stronger-model escalation, and never trust the worker's own "restored" claim
+without a grep.**
+On 2026-08-11, two unrelated Strong Cards in `Pi_Broker` — SC-03 (`extensions/pi-broker-
+bridge.ts`) and SC-04 (`src/mcp-server.mjs` / `test/mcp.test.mjs`) — both dispatched to
+`gpt-5.6-luna` via `pi -p --thinking low`, reformatted the ENTIRE touched file (2-space indent
+→ tabs, quote/trailing-comma style) alongside a small requested logical change, on the first
+attempt. A fix round was dispatched to both with an explicit prose instruction ("revert all
+whitespace/formatting-only changes, restore 2-space indent, keep only the logic change").
+Both workers' REPORT.md claimed the revert was done. Independent verification
+(`grep -cP '^\t' <file>`) found **zero actual change** in either file: 100% tab-indented,
+0% 2-space lines, identical to the pre-"fix" state. Same model, same harness, two different
+files/cards, same false-positive self-report on the same prose-instructed fix — this is a
+reproducible defect class, not a one-off card issue.
+1. Do not spend a second or third dispatch round asking the worker to "revert formatting" in
+   prose. This harness (Pi headless `pi -p` edit-tool dispatch), confirmed now across at least
+   two model tiers, cannot reliably reproduce byte-exact whitespace via a text-diff tool call,
+   and will report success regardless of whether it happened — treat that as established, not
+   as something worth re-testing per card or per model.
+2. On detecting the drift (leading-tab/space grep mismatch, or `diff --stat` wildly out of
+   proportion to the card's stated scope), fix it directly with a deterministic tool
+   (`expand -t <n>` / `unexpand` / the project's own formatter in write mode) applied to the
+   worker's already-logically-correct file, then diff the mechanically-fixed file against the
+   true pre-dispatch baseline (`git show <baseline-sha>:<file>`) to confirm the residual diff
+   is scoped to the intended logical change (RULE 3.3's Touch-List discipline still applies to
+   what remains).
+3. A "restored" self-report that a grep disproves is RULES §5.2's false-report pattern (the
+   closest analog to "pre-existing, unrelated" — a claim of completed work the artifact
+   contradicts), and RULE 4.1 already says a failure is judged **before** any retry or
+   remediation, no exceptions for "the fix is obviously mechanical." **Skipping the judge
+   dispatch because the fix looks self-evident is itself the violation** — on the incident
+   this rule is drawn from, the operator went straight from "grep disproved the self-report"
+   to running `expand` and re-diffing, with no Sonnet judge dispatched in between. The
+   mechanical fix in (2) turned out right, but that was verified after the fact by this
+   ruleset's authoring judge, not established by an actual judge call at the time. Going
+   forward: dispatch the Sonnet judge (`Agent` tool, `model: "sonnet"`, JUDGE-PROTOCOL §1)
+   with the card, both failed reports, and the grep evidence, and let it either confirm
+   "mechanical fix, no further model round" or send it back up the ladder — do not substitute
+   your own read for that dispatch, however confident. If the judge call runs in the
+   background, it is paired with an active poll (RULE 7.1) — the harness's completion
+   notification is a convenience, never the tracking mechanism (RULE 7.2); do not treat "no
+   notification yet" as "still running" without checking, and do not treat a notification
+   that never fires as "it must still be going."
+4. Any dispatch via Pi headless (`pi -p`), regardless of model, against a file with an
+   established style (2-space TS/JS, etc.) is checked with `grep -cP '^\t'` vs `^  ` on the
+   touched file(s) as a routine part of RULE 3.3 verification — not only after a fix round
+   already went wrong.
+5. **A preventive prose warning in the card text does not stop this defect either — do not
+   spend card-authoring effort trying.** SC-02 (`Pi_Broker`, `bin/pi-broker.mjs`/
+   `src/client.mjs`, 2026-08-11) dispatched with an explicit anti-reformatting paragraph
+   already written into the card ("Preserve the exact existing indentation style... Do not
+   run or apply any code formatter... Change ONLY the lines your task requires") — added
+   specifically because of this rule. The model reformatted `src/client.mjs` whole-file on
+   the *first* attempt anyway (`grep -c '^\t'` = 68, `grep -c '^  \S'` = 0, for a task
+   described as a small deterministic-error-surfacing change). Point 1 already established
+   that *corrective* retry prose fails; this confirms *preventive* prose fails too — the
+   defect is not a prompting gap, it is the harness's inability to hold a file's existing
+   whitespace convention through any edit, regardless of instruction or model. Stop writing
+   anti-reformat warnings into cards for Pi headless dispatch (they cost card-authoring effort
+   for zero measured effect); rely solely on point 4's routine mechanical grep/`expand` check
+   on every touched file, unconditionally.
+6. **Escalating to a stronger model tier does not fix this either — it fixes other defect
+   classes, not this one.** Same SC-02, same day: the retry for a *separate* defect (the
+   worker had skipped the required test-writing step) was escalated from `gpt-5.6-luna` to
+   `gpt-5.6-sol` — a stronger tier in the same `openai-codex` provider, same
+   `pi -p --provider openai-codex --model <id> --thinking <level> --no-session` harness. The
+   escalation correctly fixed the missing-tests gap (`gpt-5.6-sol` wrote all 3 required tests,
+   functionally verified: 8/8 passing, right names, right assertions) — but on the same
+   dispatch it ALSO reformatted the entire touched file (`test/broker.test.mjs`:
+   `grep -c '^\t'` = 208, 0 two-space lines). Two different models, identical harness,
+   identical defect signature. Conclusion: "escalate to a smarter model" is a valid fix-loop
+   move for defect classes like missing/incomplete work, but it is now disproven as a fix for
+   whitespace/formatting drift specifically — that class is routed only through point 2's
+   mechanical fix plus point 3's judge dispatch, never through a model-tier bump.
+7. **ROOT CAUSE FOUND (2026-08-11, Sonnet investigation, superseding the "harness, mechanism
+   unknown" framing of points 1-6): the reformatting is `pi-lens` (`npm:pi-lens`, listed in
+   `~/.pi/agent/settings.json` → `packages`, globally installed), not Pi core and not the
+   model.** `pi-lens` runs an auto-format pipeline step at `agent_end`
+   (`~/.pi/agent/npm/node_modules/pi-lens/dist/index.js`, `runFormatPhase`/`handleAgentEnd`)
+   that shells out to Biome (`.../pi-lens/dist/clients/formatters.js`, `biomeFormatter`,
+   `biome format --write <file>`) on every `.js/.jsx/.mjs/.ts/.tsx` file touched by an
+   edit/write tool call, governed by a `"smart-default"` policy
+   (`.../pi-lens/dist/clients/tool-policy.js`) that fires even with **no** `biome.json` /
+   `.prettierrc` in the target repo — exactly `Pi_Broker`'s state. With no config, Biome
+   applies its own bare defaults (`indentStyle: tab`, `quoteStyle: double`,
+   `trailingCommas: all`), which is a byte-exact match for every symptom in points 1-6,
+   including brand-new files (nothing to violate, so Biome's tab-default wins outright) and
+   the deferred timing that produced the false "formatting was preserved" self-reports (the
+   model's own tool-result view of its diff is correct; the file on disk is silently rewritten
+   *after* the turn ends, by a process the model has no visibility into or control over). This
+   is why the defect reproduced identically across `gpt-5.6-luna` and `gpt-5.6-sol` — it runs
+   in the harness's post-tool-call pipeline regardless of which model or provider issued the
+   edit, confirmed via `~/.pi-lens/projects/` tracked-state entries for every affected worktree
+   and `~/.pi-lens/logs/<date>.jsonl`, which records `formattersUsed`/`formatChanged` per file
+   and would have caught this on the very first dispatch had it been checked.
+   **The fix is a flag, not a workaround:** pass `--no-autoformat` on every headless
+   `pi -p ...` dispatch against a repo with no committed `biome.json`/`.prettierrc` (this maps
+   to `format.enabled=false` via `pi.registerFlag` in `pi-lens`'s `lens-flag-registry.js`, and
+   is scoped to the format pipeline only — it does **not** touch `pi-permission-system`, a
+   fully separate package, so RULE 3.6's no-delete/no-escape posture is unaffected). Where the
+   target repo's own Touch List permits adding a config file, committing a real `biome.json`
+   pinning the project's actual style (2-space, no tabs) is the stronger structural fix — it
+   flips `pi-lens`'s policy from "smart-default" to "config-first" so the behavior is correct
+   for every future dispatcher, not just ones that remember the flag — but do not add one
+   opportunistically to a repo whose card/plan Touch List doesn't already include it (doctrine
+   §8, no scope creep to fix tooling). **Points 1-6 remain correct as symptom-level triage**
+   (grep-verify, mechanical `expand` fix, judge-before-retry, escalation doesn't help) for any
+   case where `--no-autoformat` wasn't set before dispatch, or for a repo where a committed
+   formatter config legitimately differs from 2-space (in which case the drift is real
+   config-driven reformatting, not this defect, and should be diagnosed fresh, not assumed to
+   be RULE 9.9). Going forward, prefer prevention: set `--no-autoformat` in the dispatch
+   command itself and skip points 1-6 entirely rather than fixing the drift after the fact.
+
+> **Why.** See incident narrative above, verbatim from `Pi_Broker` SC-03/SC-04 (2026-08-11).
+> The failure was caught only because the operator verified the artifact instead of the
+> report (RULES §5.1) — a session that trusted "Restored original 2-space indentation and
+> quote/comma style..." at face value would have merged a diff with 100+ formatting-noise
+> lines per file, burying the actual logical change and violating doctrine §8/RULE 3.3. But
+> the operator's own remediation had a second, quieter gap: RULE 4.1 requires a judge pass
+> before any retry or fix, and none was actually dispatched — the `expand`-and-diff response,
+> though it later checks out, was the operator's own on-the-spot call, not a judge's. Joe,
+> verbatim, catching this mid-review: *"you did not dispatched a llm as a judge after finding
+> out"* / *"and you were not noticed that they finished"* — the second half is RULE 7's
+> failure mode recurring: a judge dispatch that either wasn't polled or whose completion
+> silently went unnoticed is functionally the same gap as never dispatching one. Both halves
+> of this rule exist because "the fix was mechanical and correct" is not a substitute for
+> "a judge was actually asked."
 
 **RULE 9.2 — Holds under "GO" / "YOLO".** If a design appears to require a forbidden key,
 STOP and surface it.
