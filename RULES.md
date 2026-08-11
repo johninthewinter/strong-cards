@@ -304,6 +304,24 @@ R20a/R20b. Both closed cleanly. R3 was not, failed, and had to be split into six
 > card. Separately, R6, R7, R18, and the combined RECOVERY card all tripped the same
 > long-context guard on the model server. Memory: `feedback_local_model_task_scoping`.
 
+**RULE 8.5 — An unresolved placeholder in a frozen card is a freeze-time blocker; patch the
+card FILE, never override it only in the dispatch prompt.** Before dispatch, grep the frozen
+card for unresolved markers (`______`, `TBD`, `fill in`, `[fill in]`). Any hit means the card
+was never actually frozen — resolve it and edit the card file itself. A prompt-only note that
+contradicts what the card still says forces the worker to silently reconcile two disagreeing
+documents mid-context, which costs real turn/context budget for no benefit — the fix costs one
+`Edit` call and removes the ambiguity for good, including for whoever re-dispatches this card
+next.
+
+> **Why.** `P0-11` (nukegraph, 2026-08-11), attempt 2: the frozen card's Fix step 4 still read
+> `**Located site (fill in before dispatch): `______`.**` at dispatch time — the operator's real
+> resolution (the site is out of scope, drop it from Acceptance criterion 4) had been appended
+> only to the dispatch prompt, never merged into the card file. The worker's own narrated plan
+> ("I'll set ceiling to 15.0s... Now applying all three fixes") cut off exactly at the
+> plan→execute seam with zero tracked-file edits — a judge pass (JUDGE-PROTOCOL §1) found this
+> contradiction as a contributing cause alongside oversized single-turn scope (§8.1/§8.4). The
+> card was patched in place before the next dispatch attempt.
+
 ---
 
 ## §9 — Model routing (hard, non-negotiable)
@@ -570,6 +588,18 @@ just a performance one.
 > THEY MUST BE CLEANED"* (on the orphans, separately correct) followed by *"New rule, monitor
 > the ram and when the inference server is getting too high for nothing after a few run,
 > restart it fresh."*
+
+**OPEN WATCH-ITEM — faster-onset growth observed, mechanism not yet confirmed.** Same day,
+same card (`P0-11`, attempt 2), a fresh 21GB post-restart baseline climbed to phys_footprint
+79GB (peak 88GB) after a single ~8-minute dispatch, and to 92GB (peak 95GB) while sitting fully
+idle (zero `:8020` connections, no client process) minutes later — a much faster onset than the
+multi-day pattern above. A per-card judge investigated read-only (`~/.mtplx/session-bank`
+entries, `mtplx settings get --json`) and could not attribute this to session-bank/prompt-cache
+staleness, draft-buffer accumulation, or a measurement artifact from where it sat. Recorded as
+an open watch-item, not a confirmed second mechanism — if this recurs, capture `footprint -p
+<pid> -v` (full region breakdown, not just the summary) at both a working and an idle-but-high
+reading, and check whether the growth correlates with `--ssd-session-cache`/`--depth`/context
+length across the specific dispatches involved.
 
 ---
 
