@@ -728,3 +728,74 @@ below) before touching the log, so the eventual check reflects real content, not
 **Do not use `sleep` as your only stall detector either** — verify liveness with `ps -o pid,pcpu,etime`
 and log mtime/size growth, the same probe discipline §6 requires for a foreground dispatch that
 looks frozen.
+
+**RULE 12.7 — A full-suite acceptance bar is a claim about the whole suite, not just the Touch
+List; a failure against it must be triaged per-test before judging card or worker at fault.**
+`P0-11-fix-timing-flake-and-warnings.md` had a 3-file Touch List (`test_probe.py`,
+`pyproject.toml`, `test_state_add_field_codemod.py`) and an acceptance criterion of "577 passed,
+0 failed, 1 warning" with no `--deselect` — the card's whole point was proving a deselect was no
+longer needed. The worker's 3-file fix was independently verified correct: diff matched the
+Touch List exactly, both in-scope warnings cleared. But the full-suite run came back "10 failed,
+567 passed," and the worker correctly followed the card's Failure protocol and reported
+`INVALID_CARD` rather than force a green result (RULE 5.5 held — coder did not grade itself).
+Independent re-verification, run alone with no concurrent load, showed 9 of the 10 failures were
+transient CPU-contention noise in unrelated watcher tests, passing clean in isolation — but the
+10th, `test_discover.py::test_discover_entrypoints_fast_perf_on_langgraph_repo`, was real and
+reproducible even in isolation: a *different* wall-clock ceiling (1000ms) flaking at 1140-1177ms,
+structurally the same defect class P0-11 existed to fix, in a file P0-11's Touch List explicitly
+forbade touching. Do not stop at "N failed" and call the card `INVALID_CARD` or the worker at
+fault; split the failure list against the Touch List first. Failures in Touch-List files are the
+card's own defect — judge it per §4. Failures in files the card never touched are a *different*
+question — a pre-existing or environmental defect, real regardless of this card, and grounds for
+a **separate** card (here, `P0-17-discover-perf-ceiling-flake.md`) rather than either blocking
+the verified fix on an unrelated flake or silently widening the Touch List to cover it.
+**Corollary, applied before freeze, not after:** a card whose acceptance criterion is "full suite
+N passed, 0 failed" is implicitly asserting every *other* test in that suite is already reliably
+green — the same kind of unstated, unverified assumption §3.7 already forbids for provisioning.
+Before freezing such a card, run the full suite once on the unmodified baseline (or explicitly
+flag in the card that this has not been checked) so a later failure can be triaged against a
+known-good baseline instead of discovered cold at acceptance time.
+
+---
+
+## §13 — OPEN WATCH-ITEM: the plan-then-silence stall on Qwen3.6-27B-Fable-Fusion (2 occurrences)
+
+**Status: 2 occurrences, both on the same card, not yet actionable as a rule.**
+
+**Signature.** The worker's log narrates a correct plan immediately adjacent to the tool call
+that would execute it (e.g. "Now I'll do the two fixes... then run the two confirmation
+tests"), then produces zero further log growth and zero tracked-file edits. Distinct from §11's
+silent clean crash: the client process stays **alive** (confirmed via `ps`, sustained 0% CPU
+rather than process death) and the model server's `/health` endpoint stays green throughout —
+per this project's own session-2 incident history, a healthy `/health` does not rule out a hung
+session, so that alone does not distinguish this from §11.
+
+**Occurrences.** (a) P0-11 attempt 2, 2026-08-11 (§8.5's Why box) — the worker's narrated plan
+cut off at the plan→execute seam with zero tracked-file edits, though that instance is
+partially confounded by the frozen-card placeholder defect §8.5 fixes (the worker had a
+document contradiction to silently reconcile). (b) P0-11 "Turn A" (mtplx port 8020, same day,
+same model, dispatched via `pi -p` headless), **after** the placeholder had already been
+patched into the card file — same plan→execute cutoff, same zero-edit result, 47+ minutes of
+frozen log confirmed via probe before the client (PID 97480) was killed. Two occurrences on the
+same card, same model, same harness — the second cannot be explained by the first cause.
+
+**Handling today.** Not enough occurrences to name a root cause or write a mechanical fix.
+Judge each occurrence individually per §4/JUDGE-PROTOCOL §1; always redispatch into a fresh
+worktree (§1.6). The operator's separate move to Pi Broker MCP transport for new dispatches
+(2026-08-11 handoff) changes the transport for the next attempt on this card — record which
+transport is used on any recurrence, since that will help separate "headless `pi -p` harness
+artifact" from "model-specific stall" for real.
+
+**Escalation trigger.** On the **3rd** occurrence (any card, this model): open a real
+investigation — capture the client's live stdout/stderr as it streams rather than relying on
+the post-hoc log file, so the hang can be localized to a specific token/tool-call/network op;
+pull the mtplx server's own per-request logs for the in-flight turn, not just `/health`; check
+whether the "plan narration" text is itself part of an in-progress tool call that never
+resolves.
+
+**Why it is only a watch item.** Two occurrences, one confounded by a separate already-fixed
+defect, is not enough to distinguish a genuine model/harness stall from card-specific noise.
+Do not conflate with §11 (process death, not hang) or the §6 Why-box's R6/R7 long-context
+model-server hangs (those ran hours on much larger cards; this is a 3-file card well within
+§8.1's local-model budget, stalling at under an hour — track separately in case the size
+correlation observed in R6/R7 does not hold here).
