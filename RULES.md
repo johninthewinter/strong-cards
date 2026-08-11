@@ -708,3 +708,23 @@ decision," search past-session memory broadly (not just the current project's me
 the answer may already be recorded. (The cards stayed on Luna anyway, for an unrelated and
 better reason: Qwen's Token Plan ToS prohibits the non-interactive batch processing that Strong
 Card dispatch is — record that as the actual reason, not "routing unknown.")
+
+**RULE 12.6 — Backgrounding a `pi -p` dispatch with shell `&`/`disown` produces a guaranteed
+false positive on the §11 near-empty-output crash gate, not a real signal.** `sc-dispatch-postcheck.sh`
+keys `CRASH=1` on `len(tool_output) < 120`, correct when the Bash tool call is synchronous and its
+output IS the dispatch transcript. Backgrounding breaks that assumption: the Bash tool call
+returns immediately with a short "dispatched, PID N" confirmation line (<120 chars) while the
+actual `pi` process is still running in the background, untouched. Observed 2026-08-11: two
+concurrent dispatches (`P0-03` to Luna, `P0-07b` to DeepSeek) both backgrounded to run two
+low-effort cards in parallel from one session; both fired the gate on launch, both were confirmed
+alive and CPU-active seconds later via `ps -o pid,pcpu,etime`. Do not run the §4 judge protocol on
+this signature — it is not a card or infra failure, it is the gate firing on its own launch
+confirmation. **Fix, in order of preference:** (a) use the harness's own background-execution
+primitive (e.g. Claude Code's Bash `run_in_background: true`) instead of manual `&`/`disown` —
+its tool result is a job handle, not dispatch prose, so the gate does not fire on launch, and
+completion is polled/awaited properly rather than guessed at; (b) if a raw shell background is
+unavoidable, sleep past the process's obvious startup window (several seconds is not enough — see
+below) before touching the log, so the eventual check reflects real content, not launch latency.
+**Do not use `sleep` as your only stall detector either** — verify liveness with `ps -o pid,pcpu,etime`
+and log mtime/size growth, the same probe discipline §6 requires for a foreground dispatch that
+looks frozen.
