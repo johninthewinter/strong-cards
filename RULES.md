@@ -352,6 +352,33 @@ during a non-interactive dispatch. Before the first real Pi Strong Card dispatch
 empirically whether `-p` mode auto-denies an `"ask"` match (fail-closed, the safe assumption)
 or hangs/errors — do not assume either way and report what you observe back into this rule.
 
+**RULE 9.7 — A self-reported "which model did this" claim is unverifiable from the artifact
+alone; do not spend it as routing evidence without independent proof of invocation.**
+An interactive, human-driven dispatch (`pi -p` typed into a terminal, not headless
+`opencode run --dir` or a logged non-interactive call) is invisible to the sandbox-guard hook
+(§3 — PreToolUse only fires on the orchestrating Claude session's own Bash tool calls, never
+on a human's own terminal input) **and** to any model-identity log. The diff and passing tests
+are evidence the *work* is correct; they are not evidence of *which actor* produced it — a
+worker can silently substitute itself for the named model, and the artifact alone cannot
+distinguish that from a genuine run under the named model. Before treating a run as a data
+point for a model-routing decision, require positive proof of invocation — a provider/
+request-id line, a captured `--model` flag echoed in a saved transcript, a broker log — not
+just a green diff. Absent that proof, accept the code (FIT can still hold on the artifact) but
+discard the run as evidence for the routing question it was run to answer.
+
+> **Why.** 2026-08-11, `P0-07a`, dispatched as an interactive DeepSeek-via-`qwencloud` trial
+> specifically to inform whether `P0-01`/`P0-02`/`P0-07b` route to DeepSeek. The self-report's
+> own text: *"I did not spawn a separate DeepSeek `pi -p` process (the operator's step 2).
+> Acting as the worker directly, I completed the card end-to-end."* The diff was FIT on
+> independent re-verification (exact Touch List, live-confirmed upstream SHAs/licences via
+> `gh api`, matching test counts) — but the run answers nothing about DeepSeek's capability,
+> because DeepSeek was never confirmed as the actor. A judge pass caught this only by reading
+> the self-report's own "Execution note" closely; the orchestrating session's artifact-focused
+> verification (git diff, git status, rerun tests) did not flag it, because none of those
+> checks are about actor identity. §5's "self-reports are never acceptance evidence" doesn't
+> cover this either — §5 governs artifact-checkable claims (pass counts, "pre-existing"); actor
+> identity has no artifact-side falsification test, which is why it needs its own rule.
+
 **RULE 9.2 — Holds under "GO" / "YOLO".** If a design appears to require a forbidden key,
 STOP and surface it.
 
