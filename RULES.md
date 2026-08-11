@@ -147,6 +147,35 @@ no-escape** posture:
 
 ---
 
+## §3.7 — PERMANENT RULE: the worktree boundary cuts both ways — provision it, don't just isolate it
+
+**RULE 3.7.1 — A card's Acceptance commands must work in a FRESH worktree, not just the main tree.**
+`git worktree add` gives the worker only what git tracks. Anything the acceptance commands
+need that is gitignored — a venv, a large fixture corpus, a scratch symlink the main tree
+happens to already have — is silently absent in a fresh worktree. A card is not dispatchable
+just because it reads correctly; it must be **provisioned** correctly.
+
+**RULE 3.7.2 — Every card states its provisioning requirement explicitly**, per
+`CARD-TEMPLATE.md`'s "Worktree provisioning" section — even when the answer is "none."
+Silence on this is not neutral; it defaults to "not checked," not "not needed."
+
+**RULE 3.7.3 — Before dispatching a batch/plan of cards, spin up one throwaway worktree and
+actually run the Acceptance commands in it.** Not read them — run them. A plan is not
+dispatch-ready on the strength of its prose being good; it is dispatch-ready when its
+commands have been proven runnable in the actual sandbox a worker will get.
+
+> **Why.** On 2026-08-11 a 16-card Phase-0 plan — independently graded as "well above the
+> template bar" on grounding, scope fences, and negative-case acceptance — turned out to be
+> **completely undispatchable**: every single card's acceptance ran `../../.audit-venv/bin/python`
+> against a suite whose `test_probe.py` needs 31.6 MB of gitignored fixtures, and NONE of the
+> 16 cards said how those got into a fresh worktree, because none of the card authors — human
+> or Opus — had actually tried dispatching into one. §3 (sandbox the worker) and §3.6
+> (worker has no delete/escape) both assume the worktree has what the card needs; this rule
+> is what makes that assumption true instead of silently false. Evidence:
+> `runs/2026-08-phase0-plan-review/RETROSPECTIVE.md`.
+
+---
+
 ## §4 — Judge on fail, always, before any retry
 
 **RULE 4.1 — A card that fails its first attempt goes to a judge before it is re-dispatched.**
@@ -341,3 +370,57 @@ and record memory pressure. Log the findings back into this section.
 **Why it is only a watch-item.** §4.2's default hypothesis is *card defect*. Three zero-correlation
 occurrences are enough to justify a narrow exception for this exact signature — and not enough
 to justify calling it a known infra bug. Do not widen the exception to any other failure shape.
+
+---
+
+## §12 — Plan-authoring lessons (self-learned from the 2026-08-11 Phase-0 plan verification)
+
+§4–§8 are about a single card failing mid-dispatch. This section is different: it's what an
+**adversarial review of an entire un-dispatched plan** found wrong with how the plan itself
+was built — before a single card ran. Evidence: `runs/2026-08-phase0-plan-review/RETROSPECTIVE.md`.
+Verdict on that plan: 6 CONFORMS / 9 NEEDS-CHANGE / 1 REJECT-and-split, out of 16 cards — good
+prose discipline, real structural gaps. The provisioning gap (now §3.7) was the most severe;
+the rest are below.
+
+**RULE 12.1 — A plan's own claims need re-verification, not synthesis.**
+The plan under review was Opus-authored, itself grounded in a separate Opus research pass —
+two strong models in sequence. The verification pass still found a wrong line number on the
+headline finding (`add_node(fn)` actually fails at `pipeline.py:617` via a tier-C gate in
+`builder.py`, not at the cited `:618-620`, which is unreachable for that shape) by re-running
+the claim against real code instead of trusting the citation. Model quality does not substitute
+for re-derivation (doctrine §1.6). Apply this to every card in a plan, not a sample.
+
+**RULE 12.2 — "Second defect site" (§4.2) applies at plan-authoring time, not just judge time.**
+P0-05 correctly found and fixed one unscoped `Command(goto=)` attribution site
+(`r7_skeleton:343-348`) but missed a second one in the same file
+(`command_goto_targets:328-338`) that was *worse* — module-wide, and silently suppressing a
+diagnostic rather than merely fabricating an edge. When a card's Defect section names a
+misclassification or a scanning bug, grep for **every** call site of that function/pattern
+before freezing the card, not just the one the research pass already found.
+
+**RULE 12.3 — Parallel-safety claims in an executor map are a file-intersection fact, not a
+planner's assertion.** The reviewed `EXECUTOR-MAP.md` claimed one card was independent of a
+lane it actually shared a file with (both touched `cli/main.py`), and offered a second pairing
+as "concurrent with manual merge" that shared two files outright. Before trusting a parallel
+grouping, diff the Touch Lists yourself: any shared file downgrades the pair to sequential,
+no exceptions for "the changes are probably in different functions."
+
+**RULE 12.4 — A card that keeps needing a split is a sizing-heuristic failure, not a one-off.**
+§8.4 already names the R3 case (one large card, split into six after it failed). This run
+produced a second, independent instance at plan-authoring time (P0-07, ~18 files spanning
+three kinds of work, rejected and split into P0-07a/P0-07b before ever being dispatched). Two
+occurrences from two different projects/authors is enough to state plainly: if a card's Touch
+List exceeds ~3 files or spans more than one *kind* of change (e.g. "add a fixture corpus"
++ "add a CLI command" in one card), split it before freezing, do not wait for a dispatch to
+prove it.
+
+**RULE 12.5 — An unresolved routing question should be resolved by searching first, not framed
+as unresolvable.** The original research pass couldn't verify the DeepSeek Flash 0731
+invocation and reassigned its cards to Luna rather than guess. The verification pass found the
+real model ID (`deepseek-v4-flash-0731`, confirmed live, §9-compliant routing via
+`QWEN_MODEL=deepseek-v4-flash-0731 claude-qwen -p`) in a memory file outside the project's own
+directory within minutes of looking. Before declaring a routing/tooling question an "operator
+decision," search past-session memory broadly (not just the current project's memory scope) —
+the answer may already be recorded. (The cards stayed on Luna anyway, for an unrelated and
+better reason: Qwen's Token Plan ToS prohibits the non-interactive batch processing that Strong
+Card dispatch is — record that as the actual reason, not "routing unknown.")

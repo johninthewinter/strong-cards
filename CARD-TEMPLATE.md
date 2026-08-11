@@ -76,6 +76,21 @@ this is what stops a worker from "helpfully" reverting a verified fix.
 > Enforcement note: this list is intent. The actual boundary is the dedicated git worktree
 > and the pre-merge `git diff --stat` / `git status --porcelain` review (RULES §3).
 
+## Worktree provisioning (RULES §3.7 — mandatory, do not skip)
+A fresh `git worktree add` gets ONLY what git tracks. Any dependency the Acceptance
+commands need that is gitignored — a `.venv`/interpreter, a large fixture corpus, a symlinked
+scratch dir — is **silently absent** unless this card says exactly how it gets into the
+worktree before dispatch. State this explicitly, even when the answer is "nothing extra
+needed":
+- `<none — this card's acceptance commands need only what git tracks>`, OR
+- `ln -s <shared-resource-abs-path> <worktree>/<name>` (one line per resource), run
+  BEFORE dispatch, as part of the operator's worktree-setup step, not the worker's job.
+
+Before dispatching ANY card in a batch/plan (not just this one), spin up one throwaway
+worktree from the plan's baseline commit and actually run this card's Acceptance §5 command
+in it. If it fails for a missing-resource reason, the card's provisioning line is wrong —
+fix the card, not the worktree ad hoc. See RULES §3.7 for why this is mandatory, not optional.
+
 ## Non-goals (≥ 2, explicit)
 - <capability deliberately not built>
 - <refactor deliberately not done>
@@ -133,3 +148,8 @@ fix, do not widen scope to make something pass, do not delete a failing test.
 - [ ] The baseline suite count is stated as a number, not "current baseline".
 - [ ] The report checklist (a)–(h) is enumerated, not "report what you did".
 - [ ] The card is frozen. The worktree exists. The tree is committed (RULES §2, §3).
+- [ ] Worktree provisioning is stated explicitly (RULES §3.7) — and was actually test-run in
+      a throwaway worktree, not just asserted.
+- [ ] Every `Defect` claim was re-derived by execution/grep against CURRENT code by whoever is
+      dispatching, not trusted from an upstream plan/research document — even an Opus-authored
+      one (RULES §12.2).
