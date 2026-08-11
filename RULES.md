@@ -513,6 +513,13 @@ reproducible defect class, not a one-off card issue.
    config-driven reformatting, not this defect, and should be diagnosed fresh, not assumed to
    be RULE 9.9). Going forward, prefer prevention: set `--no-autoformat` in the dispatch
    command itself and skip points 1-6 entirely rather than fixing the drift after the fact.
+   **Stronger than the per-dispatch flag: `~/.pi-lens/config.json` with `{"format":
+   {"enabled": false}, "autofix": {"enabled": false}}`** disables autoformat/autofix
+   machine-wide as the default (resolution order per `pi-lens`'s own docs: env var > CLI flag >
+   nearest `.pi-lens.json` > this global file > built-in default) — deployed 2026-08-11 so no
+   dispatch, from any harness or broker, needs `--no-autoformat` remembered per command. A
+   project that genuinely wants pi-lens's formatting can still opt in with its own
+   `.pi-lens.json`, which overrides this global default.
 
 > **Why.** See incident narrative above, verbatim from `Pi_Broker` SC-03/SC-04 (2026-08-11).
 > The failure was caught only because the operator verified the artifact instead of the
