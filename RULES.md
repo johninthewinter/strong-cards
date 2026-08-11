@@ -174,6 +174,53 @@ commands have been proven runnable in the actual sandbox a worker will get.
 > is what makes that assumption true instead of silently false. Evidence:
 > `runs/2026-08-phase0-plan-review/RETROSPECTIVE.md`.
 
+**RULE 3.7.4 — A shared provisioning symlink (`.audit-venv` etc.) is a shared MUTABLE resource
+across every concurrently-dispatched worktree — a card that reinstalls into it corrupts every
+other worktree's view, not just its own.** §3.7.1's fix (symlink `.audit-venv` into each fresh
+worktree) makes provisioning present, but does not make it isolated: the symlink resolves to
+the SAME venv directory for every worktree dispatched at once. A card whose Fix step says
+"reinstall into the venv" (a legitimate, common step — e.g. verifying installed-package resource
+loading) runs `pip install -e <this-worktree>/py/nukegraph`, which repoints the venv's editable
+install at that worktree's source tree. Any OTHER concurrent dispatch — or the operator's own
+independent verification — that invokes the venv's console script (`ng`) after that point
+silently runs the wrong worker's code, including code that predates whatever the main tree
+already has merged.
+
+> **Why.** 2026-08-11, the first session to run multiple parallel Strong Card dispatches
+> (3 concurrent Luna/`codex exec` workers, no broker): `P0-07b`'s Fix step correctly reinstalled
+> nukegraph into `.audit-venv` to verify installed-package corpus loading. Its worktree
+> (`card-P0-07b-v2`) had branched from the pre-`P0-03` baseline. Minutes later, `.audit-venv/bin/ng
+> analyze` on a real repo silently reported 1 node instead of 3 — P0-03's already-merged
+> `add_node(fn)` fix had vanished from the CLI's view, with zero error, zero warning, exit 0.
+> Root cause: `pip install -e` had repointed the shared venv's `direct_url.json` at
+> `card-P0-07b-v2`'s tree. Anyone running `ng` from the main repo, or from the concurrently
+> in-flight `card-P0-04` worktree, was getting stale/wrong analysis output with no signal
+> anything was wrong. This is exactly the silent-false-pass shape RULE 3.7.3 exists to catch —
+> but 3.7.3 only covers a single dispatch into a fresh worktree; nothing previously covered
+> a SECOND dispatch corrupting shared state mid-run.
+
+**How to apply.**
+- Only pytest-based acceptance commands (`../../.audit-venv/bin/python -m pytest ...`) are safe
+  to run concurrently against a shared `.audit-venv` **for cards whose own project uses
+  `pyproject.toml`'s `pythonpath = ["src"]`** — pytest then imports directly from each
+  worktree's source tree, bypassing site-packages entirely, so it is immune to another
+  worktree's reinstall. Confirm this pythonpath setting is actually present before relying on
+  the exemption; do not assume it.
+- Any command that goes through an **installed console script or `site-packages` import**
+  (`.audit-venv/bin/ng`, `python -c "import nukegraph"` without the pythonpath override) is
+  UNSAFE the moment more than one worktree can run a reinstall step, because the last reinstall
+  wins for everyone, indefinitely, until someone notices and re-fixes it.
+- Before dispatching two or more cards in parallel, check whether **any** of their Fix steps
+  says "reinstall," "pip install," or "verify installed-package loading." If more than one
+  does, either: (a) serialize just that step across the batch, or (b) give each concurrent
+  dispatch its own throwaway venv instead of a shared symlink (accept the extra provisioning
+  cost), or (c) run all such reinstalls, then immediately re-pin the venv to the MAIN repo's
+  source before doing any operator-side `ng`-CLI verification of anything.
+- After merging ANY card that reinstalled into a shared venv, immediately
+  `uv pip install -e py/nukegraph --python .audit-venv/bin/python` from the main repo before
+  trusting `.audit-venv/bin/ng` output for the next thing — do not assume the venv still points
+  where you last left it.
+
 ---
 
 ## §4 — Judge on fail, always, before any retry
