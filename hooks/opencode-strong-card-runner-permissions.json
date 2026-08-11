@@ -1,0 +1,32 @@
+{
+  "_comment": "Reference permission block for any opencode agent used as a Strong Card dispatch target (local worker, or any opencode-routed executor). Applied globally on this machine to ~/.config/opencode/opencode.json's strong-card-runner and strong-card-runner-control agents on 2026-08-11, after an audit found external_directory:\"allow\" and unrestricted bash:\"allow\" on both — i.e. the worktree boundary (RULES.md §3) was real, but the worker's OWN permission layer still let it touch paths outside its workspace and run any destructive command inside it. RULES.md §3.6 requires this. Verified against opencode's documented permission schema: keys are read/edit/glob/grep/bash/task/skill/lsp/question/webfetch/websearch/external_directory/doom_loop; values allow/ask/deny; bash additionally accepts a pattern object, last-matching-rule-wins.",
+  "permission": {
+    "read": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "list": "allow",
+    "edit": "allow",
+    "bash": {
+      "*": "allow",
+      "rm *": "deny",
+      "rm": "deny",
+      "rmdir *": "deny",
+      "shred *": "deny",
+      "git clean*": "deny",
+      "git reset --hard*": "deny",
+      "git checkout -- *": "deny",
+      "git checkout .": "deny",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "sudo *": "deny",
+      "cd /*": "deny",
+      "cd ..*": "deny"
+    },
+    "external_directory": "deny",
+    "write": "deny",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "task": "deny",
+    "doom_loop": "deny"
+  }
+}

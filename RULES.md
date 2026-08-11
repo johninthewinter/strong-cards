@@ -106,6 +106,45 @@ review is what actually bounds the blast radius. Never rely on the card text alo
 **Non-negotiable.** There is no "small card" exemption, no "read-only-ish" exemption, no
 "just a test file" exemption. The card that caused the incident was a 2-file card.
 
+**RULE 3.6 — A worker has no delete capability and cannot leave its worktree. If it needs
+either, that is a card defect, not a permissions request.**
+The worktree boundary (§3.1–§3.2) is necessary but not sufficient: a worker confined to a
+worktree can still `rm -rf` everything inside it, or reach outside via a symlink, an absolute
+path in a command argument, or a `cd ..`. Confinement must be paired with a **no-delete,
+no-escape** posture:
+- Dispatch config denies destructive commands outright (`rm`, `git clean`, `git reset --hard`,
+  `git checkout -- .`, `mv`/`cp` with an absolute path outside the worktree) — deny at the
+  harness's own permission layer if it has one (mirror the global `deny` list in
+  `~/.claude/settings.json`), not just at the sandbox-guard hook, which only inspects the
+  *dispatch* command and cannot see what the worker does once it's running.
+  **Verified reference recipe:** `hooks/opencode-strong-card-runner-permissions.json` —
+  applied globally on 2026-08-11 to `~/.config/opencode/opencode.json`'s
+  `strong-card-runner`/`strong-card-runner-control` agents, which an audit found had
+  `external_directory: "allow"` (worktree escape via any absolute path) and unrestricted
+  `bash: "allow"` (no delete-command blocking) despite the worktree rule already being in
+  force. `external_directory` is now `"deny"`; `bash` is a pattern object (opencode supports
+  this — last matching rule wins) denying `rm`/`rmdir`/`shred`/`git clean`/
+  `git reset --hard`/`git checkout -- `/`git push --force`/`sudo`/`cd /`/`cd ..` while leaving
+  everything else allowed.
+- If a worker's failure report says it needed a file, a symlink, a dependency, or a directory
+  that wasn't inside its worktree — **that is not a reason to re-dispatch with broader
+  access.** It is proof the card's grounding was incomplete: the card should have named that
+  exact file in its Touch List (or copied/symlinked it into the worktree explicitly before
+  dispatch, per the R16-onward pattern of symlinking `.audit-venv` in). Route it through §4
+  (judge on fail) with the diagnosis "card missed a dependency," and fix the CARD — never
+  widen what the worker can reach.
+- A card that turns out to genuinely need write access spanning multiple pre-existing
+  directories is a sign the card itself is too broad (§8.1) — split it, don't loosen the cage.
+
+> **Why.** The worktree rule (§3) stops a worker from reaching files outside its assigned
+> scope. It does nothing to stop a worker from **destroying files inside** that scope, and
+> nothing stops a worker whose card silently required something outside the worktree from
+> being "fixed" by just giving it more access — which is exactly the shape of the original
+> incident (an under-scoped card met an over-permissioned worker). Joe, verbatim: *"every
+> worker has NO ability to DELETE or get [out] of their worktree. If it['s] not in the
+> worktree, they can't work it. If they fail because they needed something in the worktree,
+> its a strong card issue."*
+
 ---
 
 ## §4 — Judge on fail, always, before any retry
