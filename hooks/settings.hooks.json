@@ -1,0 +1,51 @@
+{
+  "_comment": "Strong Card hooks. Merge the 'hooks' key into a project's .claude/settings.json. Copy the .sh files to .claude/hooks/ and chmod +x. Requires jq and git on PATH.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/sc-dispatch-sandbox-guard.sh",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/sc-dispatch-postcheck.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/sc-stop-guard.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Strong Card rules are in effect: every model dispatch runs in its own git worktree (never the main repo path), every tree is committed before dispatch, every self-report is independently verified against git diff --stat + direct test execution, and every failed or stalled card gets a Sonnet judge pass before any retry. Full ruleset: strong-cards RULES.md.'",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
