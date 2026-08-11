@@ -76,6 +76,23 @@ Give the Sonnet judge, verbatim:
 **Output is a concrete artifact, never advice.** Either an edited card (show the diff) or a
 set of split cards (write them). "The scope seems large" is a non-answer.
 
+**Model escalation is not a substitute for working the list above — it requires its own
+proof, not a pattern-match.** "This defect has now recurred N times across N cards" is
+evidence the defect is real; it is not, by itself, evidence that a same-tier retry against a
+corrected card would fail. Before recommending escalation to a stronger model (RULES §4,
+rounds 4-5), the judge must state explicitly: (a) which card-fix option from 1-5 above was
+tried or considered and why it was rejected for *this specific defect*, not the run as a
+whole, and (b) that a same-tier retry against the corrected card already failed, or a
+concrete reason a same-tier retry cannot possibly help (e.g. the defect is demonstrably a
+harness/tool-layer property, verified against more than one model on that harness — not
+assumed from a single model's repeated failure). Escalating on a repetition count alone,
+without that pair of statements, is itself a process defect: it was tried once
+(`Pi_Broker` SC-02, 2026-08-11) and the escalated model reproduced the identical defect,
+because the true cause was the harness, not the model tier — proof the escalation call had
+skipped step (b). If a card-text fix (clarifying that a step is mandatory, not optional; or
+narrowing scope) has not been tried at the SAME tier at least once, default to that before
+spending an escalation.
+
 ### 1.5 The judge ALSO updates the global rules — mandatory
 
 This is the part that makes the run compound instead of repeating itself.
