@@ -314,9 +314,43 @@ subscription; a direct call bills twice.
 | Work | Route |
 |---|---|
 | Anthropic (Opus / Sonnet / Haiku) | Claude Code's `Agent` tool, `model:` parameter |
-| GPT | `codex exec` |
+| GPT (Luna) | `codex exec` |
 | Other Anthropic-equivalent | opencode-go |
-| Local coder | `opencode run --dir <worktree>` against the local MLX server |
+| Local coder | `pi -p` headless (2026-08-11 onward — see below); `opencode run --dir <worktree>` remains a valid fallback harness |
+| DeepSeek Flash 0731 | `pi -p` headless, `--provider qwencloud --model deepseek-v4-flash-0731` (Qwen Cloud Token Plan, via a local broker on `127.0.0.1:18020`) |
+
+**RULE 9.4 — Pi headless dispatch (verified 2026-08-11 against the real installed config,
+not assumed).** `pi` (real CLI, `/opt/homebrew/bin/pi`) is configured with three providers in
+`~/.pi/agent/models.json`: `local-mlx` (port 8020, the Qwen3.6-27B-Fable-Fusion local worker),
+`local-ds4` (port 8010, a second local DeepSeek model), and `qwencloud` (routed through a local
+broker on port 18020 to Qwen Cloud's Token Plan, hosting `deepseek-v4-flash-0731` — already the
+session default provider/model in `~/.pi/agent/settings.json`, so a bare `pi -p "<card>"` hits
+DeepSeek Flash 0731 unless overridden). Dispatch shape:
+```bash
+cd ../.wt/card-<slug> && pi -p "$(cat card.md)" --provider <local-mlx|local-ds4|qwencloud> --model <id>
+```
+**`pi` has no `--dir`/`--cwd` flag** (confirmed against `pi --help`) — unlike opencode, its
+sandbox boundary is whatever directory it actually runs in. Always launch it with an explicit
+leading `cd <worktree> &&` in the SAME command; never rely on an earlier `cd` having "stuck."
+`hooks/sc-dispatch-sandbox-guard.sh` enforces this (§3) by parsing the `cd` prefix for `pi`
+dispatches instead of a `--dir` flag.
+
+**RULE 9.5 — Pi's own permission system is the primary enforcement layer for §3.6, use it,
+don't rebuild it.** `~/.pi/agent/extensions/pi-permission-system/config.json` (verified
+2026-08-11, reference copy: `hooks/pi-permission-system-profile.json`) already ships
+`external_directory: "deny"` and a `bash` pattern list denying `rm`, `rmdir`, `mv`, `chmod`,
+`sudo`, `curl`/`wget`/`ssh`/`scp`/`rsync`, and — notably — `git reset`, `git clean`,
+`git checkout`, `git commit`, `git push`, `git merge`, `git rebase` outright. That last group
+is correct, not overly strict: RULES §2.2/§3.4 already assign commit/merge to the OPERATOR
+after independent verification, never to the worker — Pi's default profile enforces that
+division for free. Verify this profile is still active (`pi config` or read the file) before a
+Pi dispatch; do not assume a stale/local override has left it in place.
+
+**RULE 9.6 — `"ask"` in a permission rule has undefined behavior in headless `-p` mode until
+verified on this machine.** The default `bash.*` rule is `"ask"`, which has no one to answer it
+during a non-interactive dispatch. Before the first real Pi Strong Card dispatch, confirm
+empirically whether `-p` mode auto-denies an `"ask"` match (fail-closed, the safe assumption)
+or hangs/errors — do not assume either way and report what you observe back into this rule.
 
 **RULE 9.2 — Holds under "GO" / "YOLO".** If a design appears to require a forbidden key,
 STOP and surface it.

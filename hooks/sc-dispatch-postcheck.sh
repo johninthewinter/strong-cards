@@ -17,6 +17,7 @@ CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
 
 case "$CMD" in
   *"opencode run"*|*"opencode2 run"*|*"claude-local -p"*|*"strong-card-runner"*) ;;
+  *"pi -p"*|*"pi --print"*) ;;
   *) exit 0 ;;
 esac
 case "$CMD" in *" --help"*) exit 0 ;; esac
