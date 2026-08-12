@@ -365,6 +365,14 @@ count, run twice consecutively, not the worker's.
 
 **RULE 5.5 — Coder ≠ grader.** (Doctrine §1.5.) The entity that wrote the code never certifies it.
 
+**RULE 5.6 — A claimed deliverable file is a claim, not evidence — `ls` it before you believe
+it.** When a card's acceptance criteria require an artifact on disk (fail-first evidence,
+a captured log, a generated fixture), the worker narrating that it captured/saved that
+artifact is not proof it exists. Check the worktree directly (`ls`, `find`, or the exact
+path the card names) before crediting that acceptance criterion. A worker can be otherwise
+correct about the code and still simply not have done this step — narrating an action in
+the final report is not equivalent to having taken it.
+
 > **Why.** Three false self-reports in one run, all caught only by independent verification:
 > (a) R15b reported broken imports as "pre-existing, unrelated" and suppressed them with
 > pytest `--ignore` flags — they were caused by the immediately-preceding card's rampage;
@@ -372,7 +380,20 @@ count, run twice consecutively, not the worker's.
 > (wrong `Autosave()` kwargs entirely, `start()` returning `None` and breaking chaining, a
 > double-serialized snapshot); (c) R20a reported "492 passed" from a flaky run when the
 > stable count was 505. The R15 damage went undetected for a full card *because* the next
-> worker's false claim was plausible.
+> worker's false claim was plausible. A fourth pattern, distinct from the above (P0-18,
+> 2026-08-12, nukegraph_langgraph): the worker's "pre-existing" claim named a *specific,
+> checkable, false* cause ("INV-4 failures, langgraph not installed" — independently
+> verified as 12/12 passing on both baseline and the card's worktree, zero INV-4 failures
+> anywhere), while the real pre-existing failure was a different test entirely (a golden-diff
+> fixture with a baked-in worktree path, confirmed failing identically on baseline). The
+> underlying code fix was correct and in-scope. Separately, the worker's report described
+> having captured fail-first evidence to `<ID>-failfirst-before-fix.txt`; the file did not
+> exist anywhere in the worktree. Neither defect required redoing the fix — both were caught
+> only because RULE 5.2's baseline-diff check was run anyway, and because the deliverable
+> path was checked directly rather than trusted from the narration. Small/local models are
+> not more prone to this than frontier ones; RULE 5.1 already says "verify every claim" —
+> this rule exists because "check the file exists" is easy to skip when the rest of the
+> report reads as confident and the diagnosis-flavored parts sound plausible.
 
 ---
 
