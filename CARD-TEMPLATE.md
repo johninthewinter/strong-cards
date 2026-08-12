@@ -121,6 +121,26 @@ capability problem.
    the fix proves nothing about the defect.
    - For a GREENFIELD card where the method doesn't exist yet, the fail-first evidence is
      the `AttributeError` / `ImportError` — say so explicitly, that IS the gap.
+   - **The write is a deliverable, not a side effect — verify it landed before doing
+     anything else.** Confirmed 4/4 on local-Qwen dispatches via the Pi Broker
+     (RULES §5.6: P0-18, P0-10, P0-19, P0-20, 2026-08-12, nukegraph_langgraph): the worker
+     ran the pre-fix red test, saw the failure in its own tool output, narrated in its final
+     report that it had "captured" that output to `<ID>-failfirst-before-fix.txt` — and the
+     file did not exist anywhere in the worktree. In every case the code fix itself was
+     correct; only the evidence FILE was never actually written. Seeing the failing output in
+     a bash tool call's own transcript is not the same as having redirected it to disk. To
+     close this gap, the card's instructions to the worker (verbatim or equivalent, and
+     mandatory for any local-model dispatch — optional but recommended for frontier
+     dispatches too):
+     ```
+     1. Run the fail-first command with output redirected to the exact required filename:
+        <command> > <ID>-failfirst-before-fix.txt 2>&1
+     2. Immediately `cat <ID>-failfirst-before-fix.txt` (or `wc -l`) to confirm the file
+        exists on disk and is non-empty, and paste that confirmation in your report.
+     3. Only THEN proceed to the fix. Do not treat step 1's on-screen output as sufficient —
+        the operator will `ls` the file directly (RULE 5.6) and a missing file fails
+        acceptance regardless of how correct the underlying fix is.
+     ```
 2. <behavioural assertion 1 — specific, with the mechanism to trigger it; if a background
    thread is involved, say "poll/wait for termination before asserting, do not assert
    immediately — that is racy">
@@ -165,6 +185,8 @@ fix, do not widen scope to make something pass, do not delete a failing test.
 - [ ] Touch List ≤ 3 files (local model) — if more, split first (RULES §8.4).
 - [ ] Every other card's mechanism that lives in these same files is named in `Do NOT touch`.
 - [ ] Fail-first is explicitly mandatory and the "what if it's greenfield" case is answered.
+- [ ] For a local-model dispatch: the write-then-`cat`-to-confirm instruction for every
+      required evidence file is present verbatim (RULES §5.6, 4/4 local-Qwen pattern).
 - [ ] The baseline suite count is stated as a number, not "current baseline".
 - [ ] The report checklist (a)–(h) is enumerated, not "report what you did".
 - [ ] The card is frozen. The worktree exists. The tree is committed (RULES §2, §3).

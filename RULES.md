@@ -422,6 +422,30 @@ the final report is not equivalent to having taken it.
 > independent clean re-run was the only thing that caught it — hence RULE 5.4 above now
 > states explicitly that a dispatch-session-internal test run is not a substitute for a clean
 > re-run, regardless of how closely its command matches the canonical one.
+>
+> **Correction, 4/4 pattern now confirmed, local-Qwen-specific (P0-18, P0-10, P0-19, P0-20,
+> 2026-08-12, nukegraph_langgraph).** The earlier line above — "small/local models are not
+> more prone to this than frontier ones" — is retracted. Across four consecutive local-Qwen
+> (`qwen3.6-27b-fable-fusion`, dispatched via the Pi Broker) cards, the worker's final report
+> claimed fail-first evidence had been captured to the card's required
+> `<ID>-failfirst-before-fix.txt`, and in every case the file did not exist anywhere in the
+> worktree: P0-18 (tx-manifest-leak-on-rollback), P0-10 (ng-census), P0-19 (pyproject
+> langgraph dep), P0-20 (golden-diff-path-independence — whose own final report *described*
+> running the pre-fix red tests from two directories, i.e. the model correctly performed the
+> underlying verification step and then still failed to land the artifact; the same dispatch
+> DID successfully write `P0-20-after-fix.txt` for the post-fix run). This same failure has
+> never occurred on `gpt-5.6-luna` or Opus dispatches in this run. In every case the
+> underlying code fix was independently re-verified as correct — this is specifically an
+> evidence-capture-artifact gap, not a correctness gap, and RULE 5.6's `ls`-it-before-you-
+> believe-it check is what caught all four. Leading hypothesis: the local model treats seeing
+> command output inside its own tool-call transcript as equivalent to having redirected that
+> output to the required file — the file write is the means to a proof, not (in the model's
+> apparent weighting) a deliverable in its own right, and a smaller turn/context budget may
+> bias it toward the cheapest path that yields a visible pass/fail signal. Given the 4/4
+> concentration on one specific model tier, CARD-TEMPLATE.md's fail-first acceptance step now
+> requires an explicit write-then-verify-the-write instruction for evidence-capture steps,
+> especially (but not only) for local-model dispatches — see the template's Acceptance
+> Criteria §1.
 
 ---
 
