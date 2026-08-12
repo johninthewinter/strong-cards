@@ -690,6 +690,22 @@ replace live observation when you're actively unblocking a permission prompt in 
 new + `broker.mjs`/`pi-broker-bridge.ts`/`package.json` modified) — committing a shared tool
 repo outside this project's own scope was left to the operator, not done autonomously.
 
+**RULE 7.8 — Every cycle's health check includes host RAM, not just mtplx/broker liveness;
+kill zombie `pi` sessions on sight, don't just note them (2026-08-13, session 5, Joe explicit:
+"it must be in your rule to monitor that").** `top -l 1 -n 0 -s 0 | grep PhysMem` for total
+used/wired/free; cross-reference every registered broker session (`pi-broker list`) against
+`lsof -a -p <pid> -d cwd` and the actual worktree's existence via `git worktree list` — a
+session whose worktree no longer exists is dead weight, not "might resume." On this incident, 8
+zombie sessions from cards merged or abandoned in an *earlier, unrelated phase* (P0-03, P0-06,
+P0-06-v2, P0-07b, P0-07c, P0-08, P0-12, P0-14) had accumulated silently across many cycles —
+each `pi` client process holds ~400-500MB, and the host was at 114GB/127GB used with only 13GB
+free before cleanup. **Practical rule:** at the top of every cycle's health check, list broker
+sessions, kill (`kill <pid>`) any whose worktree directory no longer exists — the broker
+auto-deregisters on process exit, no separate deregister call needed — and report a one-line
+RAM figure alongside the mtplx/broker status line. This is in addition to, not instead of, RULE
+7.6's per-dispatch zombie check (which only looks at the *current* card's prior session); this
+rule is the periodic full-sweep across every session the broker knows about.
+
 ---
 
 ## §8 — Local-model task scoping
