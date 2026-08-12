@@ -548,6 +548,22 @@ the original card for values it can just be given), and is delivered as "read th
 now"; leave the original CARD.md untouched. This removes the need for any fishing/re-verification
 loop regardless of whether the underlying cause is a tool ceiling or a worker confidence problem.
 
+**RULE 5.10 — the worker's turn genuinely ends after narrating an intention, not just after
+acting on it; the initial dispatch prompt must say so explicitly (P0-26a AND P0-26b, both
+2026-08-12/13, same pattern twice in a row).** Twice now, the model's final message of a turn
+was a plan statement — "Now let me write the failing test properly" (P0-26a), "I'll add them at
+the end of the file" (P0-26b) — immediately followed by `agent_end`/`agent_settled` with ZERO
+file changes in the worktree. The model appears to treat narrating the next step as equivalent
+to having done it, and the turn simply ends there rather than continuing into the tool call that
+would have executed it. Both times this needed a manual nudge to recover (cheap, but avoidable).
+**Fix: every initial dispatch prompt (not just retries) must include an explicit instruction
+against this exact failure mode**, e.g.: *"Do not end your turn on a sentence describing what
+you are about to do — every 'let me now X' / 'I'll add Y' must be followed by the actual tool
+call that does X/Y in the SAME turn, before you stop. A turn that ends on a stated intention
+with no corresponding file change is incomplete, not paused."* Apply this to the standard
+dispatch prompt template alongside RULE 5.8's blocked-commit wording, not as a bolt-on only
+after the first occurrence per card.
+
 ---
 
 ## §6 — Investigate early; probe, don't watch the clock
