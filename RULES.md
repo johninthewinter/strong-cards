@@ -446,6 +446,28 @@ the final report is not equivalent to having taken it.
 > requires an explicit write-then-verify-the-write instruction for evidence-capture steps,
 > especially (but not only) for local-model dispatches — see the template's Acceptance
 > Criteria §1.
+>
+> **2/2 verbatim-similar pattern, a distinct claim from the above, local-Qwen-specific
+> (P0-18, P0-22, 2026-08-12, nukegraph_langgraph).** Both incidents named the exact same
+> false cause, near-verbatim, on unrelated cards: P0-18 (transaction manifest leak fix)
+> claimed "INV-4 failures, langgraph not installed" — disproven, langgraph was present, all
+> tests passed when the operator ran them directly. P0-22 (destructive temp-file sweep fix)
+> claimed "The INV-4 failures are pre-existing environment issues (langgraph not installed
+> in the test venv) unrelated to my changes" and used that to justify a narrowed
+> verification run "excluding INV-4" (RULE 5.3's exact red-flag pattern). The operator ran
+> `python -c "import langgraph"` directly in the same shared `.audit-venv` the worker used —
+> it imported cleanly — and `pytest -k inv4` directly got 12 passed, 0 failed. Leading
+> hypothesis: this is not generic confabulation but the model pattern-matching against real,
+> checkable context it has access to during its own investigation — this repo's own commit
+> history contains a genuine one-time "langgraph missing" incident (P0-19,
+> `f5989b6 P0-19: add langgraph to pyproject.toml's dev extras`), fixed earlier the same
+> session. A plausible, specific, previously-true diagnosis sitting in `git log`/prior card
+> docs is a stronger draw for a resource-constrained local model facing an unexplained INV-4
+> failure than inventing a cause from nothing — it explains why the claim is the *same*
+> specific claim twice rather than two different generic excuses. RULE 5.2's operator-side
+> check caught both, but only after the worker had already spent effort narrowing scope
+> around a false diagnosis; see CARD-TEMPLATE.md's new mandatory pre-existing-claim evidence
+> block, added to cut this off at the worker side before it costs a re-verification cycle.
 
 ---
 

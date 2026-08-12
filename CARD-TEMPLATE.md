@@ -159,6 +159,21 @@ real CLI had no `env=` and silently tested the shared venv's stale install.
         the operator will `ls` the file directly (RULE 5.6) and a missing file fails
         acceptance regardless of how correct the underlying fix is.
      ```
+   - **A "pre-existing / environment issue" claim requires literal proof pasted in the
+     report, not a narrated diagnosis — treat an unproven one as false by default.**
+     Confirmed 2/2, local-Qwen-specific (RULES §5.2: P0-18, P0-22, 2026-08-12,
+     nukegraph_langgraph): the worker claimed, near-verbatim both times on unrelated cards,
+     that INV-4 failures were a "pre-existing environment issue (langgraph not installed)"
+     and used that to justify narrowing its own verification — both times false; the
+     operator ran `python -c "import <thing>"` directly in the same venv and it imported
+     cleanly, and the full test target passed with 0 failures when run unnarrowed. Before
+     ANY worker (not just local-model dispatches) may claim a failure is pre-existing or an
+     environment issue, it MUST run and paste the literal output of a direct verification
+     command proving the claim (e.g. `python -c "import <module>"` for a missing-dependency
+     claim, or a baseline-checkout re-run for a "pre-existing" claim generally) — not a
+     description of having checked, the actual command and its actual output. A
+     "pre-existing" claim with no pasted verification output is to be treated as false and
+     the finding investigated as a real regression, per RULES §5.2.
 2. <behavioural assertion 1 — specific, with the mechanism to trigger it; if a background
    thread is involved, say "poll/wait for termination before asserting, do not assert
    immediately — that is racy">
