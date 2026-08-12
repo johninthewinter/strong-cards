@@ -625,6 +625,22 @@ leading `cd <worktree> &&` in the SAME command; never rely on an earlier `cd` ha
 `hooks/sc-dispatch-sandbox-guard.sh` enforces this (§3) by parsing the `cd` prefix for `pi`
 dispatches instead of a `--dir` flag.
 
+**RULE 9.4a — a `codex exec "<prompt>"` dispatch with no stdin explicitly closed can hang
+indefinitely even though a prompt WAS given as a positional argument.** `codex exec --help`:
+"If stdin is piped and a prompt is also provided, stdin is appended as a `<stdin>` block" —
+in practice this means codex still waits to see whether stdin will be piped, and a bash
+subprocess with no redirect leaves stdin open (connected to nothing, neither closed nor
+fed), so it blocks on "Reading additional input from stdin..." forever, distinct from the
+already-documented hang failure mode this RULE's enforcing hook exists for. Symptom: the
+`timeout N codex exec "..."` wrapper still eventually times out (or the background task
+"completes" with exit 0 via the pipe), but the entire captured output is the single line
+"Reading additional input from stdin..." — zero real work happened. **Fix: always redirect
+stdin explicitly** — `codex exec "<prompt>" < /dev/null`, even when `timeout` already wraps
+the call and even when the prompt is a full inline string, not a file. Confirmed 2026-08-12
+during the break-test audit phase (nukegraph_langgraph, `audit-gptsol` dispatch): first
+attempt hung the full session with only that one line of output; adding `< /dev/null` fixed
+it on retry.
+
 **RULE 9.5 — Pi's own permission system is the primary enforcement layer for §3.6, use it,
 don't rebuild it.** `~/.pi/agent/extensions/pi-permission-system/config.json` (verified
 2026-08-11, reference copy: `hooks/pi-permission-system-profile.json`) already ships
