@@ -111,6 +111,24 @@ changed observable behavior almost always means it forgot this and is silently t
 main-repo code — that is the first thing to check before concluding INVALID_CARD or a model
 capability problem.
 
+**The same pitfall applies to any test the worker AUTHORS that itself spawns the CLI as a
+subprocess** (e.g. `subprocess.run([sys.executable, "-m", "<entry module>", ...])` to test
+`--json` output, exit codes, or stdout/stderr shape end-to-end) — not just the worker's own
+manual invocations. `pytest`'s `pythonpath = [...]` config setting (pyproject.toml) only
+affects `pytest`'s own import resolution; it is NOT inherited by a child process spawned via
+`subprocess.run` unless the test explicitly passes it through. A `subprocess.run(...)` call
+with no `env=` argument inherits the *calling* environment, which usually has no PYTHONPATH
+set either, so the subprocess resolves the CLI against `.audit-venv`'s stale editable install
+— exactly the same silent-wrong-code failure mode as a manual invocation, but inside a test
+the worker itself wrote and therefore harder to blame on "forgetting" the mitigation. Any
+card whose acceptance criteria require a subprocess-based CLI test must say so explicitly:
+the test's `subprocess.run` call must pass `env={**os.environ, "PYTHONPATH": str(<worktree
+src path>)}` (or equivalent) so it is self-contained and correct regardless of who invokes
+pytest or how. Confirmed 2026-08-12 (nukegraph_langgraph, P0-23): a worker's own schema-
+conformance test showed the full pre-fix failure count even though the underlying fix was
+verified correct by direct invocation, because its `subprocess.run` call to exercise the
+real CLI had no `env=` and silently tested the shared venv's stale install.
+
 ## Non-goals (≥ 2, explicit)
 - <capability deliberately not built>
 - <refactor deliberately not done>
