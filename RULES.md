@@ -145,6 +145,35 @@ no-escape** posture:
 > worktree, they can't work it. If they fail because they needed something in the worktree,
 > its a strong card issue."*
 
+**RULE 3.8 — "Every agent" in §3's founding quote means every agent, including reviewers,
+judges, breakers, and POC testers — not just recognized coder-dispatch CLI patterns.**
+The sandbox-guard hook (`hooks/sc-dispatch-sandbox-guard.sh`) only pattern-matches specific
+Bash command shapes (`opencode run`, `claude-local -p`, `pi -p`, `strong-card-runner`). A
+subagent launched through a generic Agent/Task tool call — a code reviewer, a break-test/POC
+agent, a judge that runs commands rather than just reading a diff — is invisible to that hook
+entirely, because the hook only ever sees the orchestrator's own Bash tool calls, never what
+runs inside a dispatched subagent. This is a real enforcement gap, not a theoretical one:
+nothing currently stops an orchestrator from pointing a "just testing" agent at the primary
+working tree.
+
+The rule closes it at the orchestrator level, since no hook can (2026-08-11, session 5, Joe:
+*"every agent that review must work in sandboxes and worktree, SUPER IMPORTANT, nobody is
+allowed to break the original thing"* / *"well its the same for every agent in the future...
+global. we dont want crazy bat shit to happen."*):
+- Before dispatching ANY agent that will run code, edit files, install dependencies, or execute
+  anything beyond read-only inspection of already-materialized text (a diff, a file the
+  orchestrator pastes in) — create a dedicated worktree for it first, exactly as §3.1.
+- Give that agent ONLY the worktree's absolute path, stated explicitly as its filesystem
+  boundary in the prompt, with an explicit instruction never to read or write outside it and
+  never to touch the primary repo path directly. If the agent's own harness has a directory-pin
+  parameter, use it; if it doesn't, the prompt text is the boundary — state it as a hard
+  constraint, not a suggestion.
+- A reviewer/breaker/judge worktree is disposable: capture its findings, then
+  `git worktree remove --force` it. Never merge a breaker's own working-tree changes back into
+  main — its diff was never the deliverable, its report was.
+- This applies permanently and globally, not just to the session that prompted it — every
+  future orchestrator session inherits this rule the same way it inherits §3.1–§3.7.
+
 ---
 
 ## §3.7 — PERMANENT RULE: the worktree boundary cuts both ways — provision it, don't just isolate it
@@ -701,6 +730,45 @@ and record memory pressure. Log the findings back into this section.
 **Why it is only a watch-item.** §4.2's default hypothesis is *card defect*. Three zero-correlation
 occurrences are enough to justify a narrow exception for this exact signature — and not enough
 to justify calling it a known infra bug. Do not widen the exception to any other failure shape.
+
+---
+
+## §11.5 — PERMANENT RULE: an interactive broker session does not survive machine sleep; caffeinate before any long-unattended dispatch
+
+**Confirmed root cause, not a watch-item** (unlike §11 above) — 2026-08-12, session 5. Three
+Pi Broker sessions (`sc-p0-06`, `sc-p0-08`, `sc-p0-15`) were dispatched, one settled normally,
+the other two were left running unattended overnight. On the next check, ~13 hours later:
+- All three underlying `pi` processes were gone (`ps aux` showed nothing), despite the
+  Terminal.app windows still displaying their old titles.
+- The broker still listed all three as registered — it only deregisters on a socket `close`
+  event, and evidently never received one, so its session registry silently went stale.
+- `pmset -g log` confirmed 263 sleep/wake cycles since boot, and a `caffeinate` process that
+  had been keeping the machine awake had itself died shortly before the check
+  (`ClientDied PreventUserIdleSystemSleep`).
+- A resend to the stale-but-still-listed session immediately returned an empty
+  `agent_settled` in ~3 seconds — the broker will happily accept and "deliver" a prompt to a
+  session whose actual process no longer exists, producing a result that looks exactly like
+  the silent-clean-crash signature in §11 but has a completely different, mundane cause.
+
+**Rule:** before dispatching anything through the Pi Broker that is expected to run
+unattended for more than a few minutes (which is every real Strong Card dispatch), start
+`caffeinate -dis` in the background for the duration of the session and confirm it is still
+alive at the start of every check-in cycle (`pgrep caffeinate`) — restart it if it died. This
+costs nothing and fully prevents the failure mode above.
+
+**Diagnostic when a broker session goes suspiciously quiet after any gap in
+orchestrator activity (a long tool call, a context compaction pause, an overnight loop):**
+1. `ps aux | grep "pi --extension"` — if the session's actual PID is gone, this is a dead
+   session with a stale broker registration, not a card or model failure. Do not judge the
+   card; do not escalate the model.
+2. `pmset -g log | grep -i "sleep\|wake"` and `uptime` — corroborate a sleep/wake gap
+   coincided with the silence.
+3. Recovery: kill and restart the broker (clears the stale registry — a dead session's ID
+   cannot be re-registered while the broker still thinks it's live), restart the passive
+   listener if one is running, reopen a fresh window for each affected session
+   (`open-pi-windows.mjs`), and redispatch the card fresh. Untouched cards that already
+   settled and were verified/merged before the gap are unaffected — only re-verify what
+   was actually still in flight.
 
 ---
 
