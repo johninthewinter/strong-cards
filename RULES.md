@@ -468,6 +468,31 @@ the final report is not equivalent to having taken it.
 > check caught both, but only after the worker had already spent effort narrowing scope
 > around a false diagnosis; see CARD-TEMPLATE.md's new mandatory pre-existing-claim evidence
 > block, added to cut this off at the worker side before it costs a re-verification cycle.
+>
+> **RULE 5.7 — a worker's own "N tests pass" is scoped to the tests it chose to run, and
+> that scope is exactly where a real cross-file regression hides (P0-16, 2026-08-12,
+> nukegraph_langgraph).** Local-Qwen completed P0-16 (a correct, approved-design fix: emit a
+> `CustomRegion` when a node's impl is a compiled subgraph), self-reported "all 51 tests
+> pass" — true, but the 51 were only `test_pipeline.py` + `test_corpus_invariants.py`, the
+> two files nearest the diff. The operator's independent full-suite run (mandatory per RULE
+> 5.4, never skip it because a narrower self-report looked clean) found 2 failures in a THIRD
+> file the worker never touched or ran: `test_demo_gate_real_repo.py`. Root cause: the new,
+> correct `CustomRegion` on one node (`research_supervisor`) tripped an existing, unrelated
+> gate (`transaction.py`'s `_CUSTOM_REGION_LOCKS`, graph-scoped not node-scoped) that then
+> refused an operation on a *different* node (`final_report_generation`) in the same graph —
+> a genuine emergent interaction between a correct fix and a pre-existing, un-related design
+> gap, invisible from inside either file alone. A Sonnet judge traced the actual gate code
+> (not just the failure message), confirmed the fix itself was correct, confirmed a
+> plausible-looking hypothesis in the failure context was WRONG (the obvious "P0-29 will fix
+> this" assumption did not hold — P0-29's own Touch List never touches the actual culprit
+> lines, confirmed by direct read, not by trusting the ordering rationale), and recommended
+> widening the card's scope to fix the two newly-red assertions (updating their expected
+> outcome to match new, correct behavior — not silencing or skipping them) plus filing a new,
+> separate sibling card for the actual gate-granularity gap. **Lesson: "the worker's chosen
+> test scope passed" is not "the fix is safe" — always run the FULL suite yourself before
+> merging, exactly as RULE 5.4 already says, and when it turns up a failure outside the
+> worker's Touch List, don't assume the nearest-sounding already-planned future card covers
+> it; read that other card's actual Touch List before relying on it for sequencing.**
 
 ---
 
