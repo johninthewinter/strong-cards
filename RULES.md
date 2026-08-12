@@ -354,6 +354,25 @@ resolves, the answer is "still running", with the §6.2 detail.
 > twice in this run alone (R2, R3a) — the jobs had finished and the session did not know.
 > Memory: `feedback_background_job_notification_unreliable`.
 
+**RULE 7.4 — A Pi Broker session is a real, interactive terminal — watch the screen, not
+just the event log.** The broker's `assistant_message` events are truncated to a short
+preview and the CLI's own status is coarse (settled / not settled). Both miss things that
+only show up on screen: a model-server error mid-turn, the session's live context-usage bar,
+lint/LSP findings, whether it's genuinely `⠧ Working...` versus idle at a prompt after an
+error. Read the actual Terminal window content before deciding a session is stalled, dead, or
+failed:
+```
+osascript -e 'tell application "Terminal" to repeat with w in windows' \
+  -e 'set t to name of w as text' \
+  -e 'if t contains "<session-id>" then return contents of tab 1 of w' \
+  -e 'end repeat' -e 'end tell'
+```
+Use `contents of tab 1 of w`, not `contents of w as text` — the latter errors (-1700) on
+styled/ANSI content. Joe, verbatim (2026-08-12, session 5): *"new rule keep an eye on the
+broker and the worker throught pi, its not headless, you can interact, see wht they do."*
+An idle session after a visible error is not the same as a stalled or dead one — it is
+waiting for a nudge, not a judge.
+
 ---
 
 ## §8 — Local-model task scoping
@@ -367,6 +386,28 @@ split it or route it up the ladder.
 Local models resend the full conversation every turn with no server-side persistence.
 Context grows quadratically; throughput collapses long before the model runs out of
 competence.
+
+**RULE 8.2a — Repeated resends into the SAME session accumulate, they don't reset.** A retry,
+a nudge, or an infra-fix follow-up sent via `pi-broker prompt` into an already-registered
+session appends to that session's existing context — it is not a fresh turn. Below roughly
+60% of the model's context window, a resend is fine and preserves the session's accumulated
+understanding (correct file paths it already found, evidence it already captured). Above that,
+prefer opening a genuinely fresh broker session (new session id, same worktree) over another
+resend. Check the context-usage bar in the terminal (RULE 7.4) each cycle, don't assume.
+
+**RULE 8.2b — MTPLX-served local models need `--profile sustained` for real Strong Card
+prompts, not the default `performance-cold`.** A card's full text plus tool-call history
+routinely exceeds the default profile's safe-prefill threshold (observed: 16,556 prompt
+tokens tripped `Blocked unsafe long-context MTP prefill path` under `performance-cold`,
+mid-turn, with no prior warning). Start with
+`mtplx quickstart --model <model> --port <port> --yes --reasoning off --profile sustained
+--model-id <id>` — not a hand-reconstructed `python -m mtplx.server.openai` invocation (that
+requires exactly reproducing every flag correctly and is easy to get subtly wrong, e.g.
+picking up the wrong `python` interpreter and getting `ModuleNotFoundError: No module named
+'mtplx'`). If a local-mlx dispatch errors with this message mid-session, the session itself
+is NOT broken — kill and restart the server with `--profile sustained`, then simply nudge the
+same session to continue; its accumulated context and progress are unaffected by a server-side
+restart.
 
 **RULE 8.3 — Instruct the worker to keep its own context small.**
 Redirect test output to files and `tail`/`grep` the summary back, rather than pasting full
