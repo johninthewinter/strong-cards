@@ -744,6 +744,32 @@ write it into the tracker header with its date. That header is how the next sess
 
 ---
 
+## §10.5 — Symptom signature: frozen JSON-as-text is tool-call leakage, not a stall or crash
+
+**Confirmed 2026-08-12, session 5, `P0-08` via local-mlx (Qwen3.6-27B Fable Fusion).** A
+session's Terminal screen frozen on a raw JSON array of `{"label", "command", "timeout"}`
+objects, printed as plain prose instead of actually being executed as tool calls, with the
+underlying process idle at near-0% CPU, is **tool-call-schema leakage** — the model finished
+its turn having emitted malformed pseudo-output instead of a real function call. It is not a
+hang (the process isn't computing) and not the §11 silent-clean-crash signature (the process
+didn't die). Judged (Sonnet, low effort) and confirmed against the diff: real file-level
+progress from earlier in the same session (71 lines of correct test code) was intact and
+unaffected — this is a chat-state degradation, not data loss.
+
+**Contributing factor, not the model's fault by default:** this followed two prior resends
+into the same session (RULE 8.2a) — i.e. accumulated context is a plausible trigger, matching
+the card/infra-first default hypothesis (§4.2), not evidence of a Qwen3.6-27B capability gap.
+
+**Handling:** do not wait longer, and do not blind-nudge by default.
+- Check the context-usage bar first (RULE 7.4). Below ~60%, one plain-text nudge ("that wasn't
+  executed, please retry via real tool calls") is reasonable.
+- Above ~60%, or after 2+ prior resends already went into the session, prefer killing that
+  session and opening a genuinely FRESH broker session in the SAME worktree instead. File-level
+  progress survives on disk; chat-state degradation does not need to be dragged forward into a
+  new turn.
+
+---
+
 ## §11 — OPEN WATCH-ITEM: the silent clean crash (unresolved)
 
 **Status: 3 occurrences observed, no root cause, not yet actionable.**
