@@ -706,6 +706,28 @@ RAM figure alongside the mtplx/broker status line. This is in addition to, not i
 7.6's per-dispatch zombie check (which only looks at the *current* card's prior session); this
 rule is the periodic full-sweep across every session the broker knows about.
 
+**RULE 7.9 — mtplx (or any local inference engine) is not exempt from RAM hygiene; restart it
+when host memory pressure is high and no dispatch is in flight (2026-08-13, session 5, Joe
+explicit: "Qwen is not supposed to take that much ram after this task restart the server, must
+be in your rules. Global. If ram usage is too high due to the inference server restart it").**
+This is a GLOBAL rule (this file is globally in effect on this machine per the SessionStart
+hook, not scoped to one project) — applies to any Strong Card work, any local-model session,
+any project. A 27B q4 model server's baseline RSS (weights + active KV cache) is expected to sit
+in the tens-of-GB range on its own — that alone is not evidence of a leak. What IS a signal:
+host `PhysMem` used climbing toward the ceiling with little free headroom (rule of thumb: well
+under ~10-15% of total RAM free) *combined with* the inference engine's own RSS trending upward
+across dispatches rather than holding steady, or the operator naming it directly as excessive.
+**Do not restart mid-turn.** A live dispatch depends on the engine holding its KV cache/session
+state — killing it mid-generation corrupts or loses the in-flight turn. Sequence: (1) confirm no
+`pi` session is actively generating (RULE 7.6 — no unsettled turn on the broker), (2) if genuinely
+clear, restart the engine process (the exact command is in this machine's own model-serving
+recipe, e.g. `~/src/strong-cards/QWEN36-27B-FABLE-FUSION-MTPLX-RECIPE.md`'s `mtplx quickstart`
+invocation — reuse the recorded flags verbatim, do not improvise new ones), (3) health-check it
+responds again before resuming dispatch (RULE 7.1's health-check-before-dispatch pattern), (4)
+log the restart and the before/after RSS in whatever status line or queue file is tracking the
+current work, so a recurring pattern becomes visible over time rather than each restart looking
+like an isolated one-off.
+
 ---
 
 ## §8 — Local-model task scoping
