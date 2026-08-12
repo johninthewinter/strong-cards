@@ -434,6 +434,24 @@ broker and the worker throught pi, its not headless, you can interact, see wht t
 An idle session after a visible error is not the same as a stalled or dead one — it is
 waiting for a nudge, not a judge.
 
+**RULE 7.5 — Manually launching a new Pi Broker session (`osascript ... do script "..."`)
+MUST `cd` into the target worktree as the first thing in the launched command string, in the
+SAME string that sets `PI_BROKER_SESSION_ID` and runs `pi` — never a separate step, never
+assumed from context.** `do script` opens a fresh shell whose cwd defaults to the user's home
+directory (or Terminal's default), not the operator's own current directory. Pi's own
+permission system enforces its `external_directory: deny` boundary against the *process's own
+launch cwd*, not per-command `cd` prefixes the model later types into its bash tool calls — so
+a session launched from the wrong directory has its worktree-isolation boundary silently
+anchored to the wrong place (e.g. the whole home directory), which is exactly the class of
+"crazy bat shit" §3.8 exists to prevent, even though the model itself may never notice or
+misbehave. Verify with `lsof -a -p <pid> -d cwd` immediately after launch — do not trust the
+window title or a "looks like it started fine" impression. On 2026-08-12 this exact mistake
+was made three times in a row dispatching `sc-p0-09` (the `cd <worktree> &&` prefix was
+mentally intended but never actually written into the command string), each requiring
+`lsof`-based PID discovery and a manual `kill` to recover — write the full command to a file
+first and read it back if there is any doubt it's correct, rather than trusting an inline
+one-liner typed under time pressure.
+
 ---
 
 ## §8 — Local-model task scoping
