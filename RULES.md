@@ -645,19 +645,34 @@ responsive, it may genuinely still be generating. Complements RULE 7.4 (visually
 actual terminal) rather than replacing it — the event log tells you *when*, the terminal tells
 you *what went wrong*.
 
-**RULE 7.7 — Pi Broker dispatches trace into the local Langfuse instance (org `joe-local`,
-project `nukegraph-strongcard`, http://localhost:3001) once wiring lands (build started
-2026-08-13, session 5) — prefer it over manual listener-log/transcript archaeology once it's
-live.** The goal: one trace per dispatched card/session, with spans for each turn
-(`agent_start`→`agent_end`/`agent_settled`), captured `assistant_message` content, and
-`permission_decision` events (these matter most — they're where the sandbox blocks risky
-worker commands, directly relevant to RULE 4.5's judge-evidence rule). Tracing is opt-in and
-degrades silently — a Langfuse outage or disabled flag must never block or slow a dispatch.
-Until this is confirmed live and verified (a real fetched-back trace, not just "no error
-thrown"), RULE 7.4/7.6 (terminal + listener log) remain the primary monitoring method — do not
-assume tracing is active without checking; a stale rule referencing infrastructure that never
-shipped is worse than no rule. Update this entry to state VERIFIED LIVE plus the wiring's
-actual location once confirmed.
+**RULE 7.7 — Pi Broker dispatches CAN trace into the local Langfuse instance (org `joe-local`,
+project `nukegraph-strongcard`, http://localhost:3001) — VERIFIED LIVE 2026-08-13, session 5,
+but OFF BY DEFAULT.** Wiring: `src/langfuse-tracing.mjs` (new, `~/src/Pi_Broker/`) instruments
+the single `#broadcast()` choke point in `src/broker.mjs` — every event for every session
+passes through there once, so this is the one integration point rather than duplicating SDK
+init per Pi extension process. One Langfuse trace per broker session (root span keyed to the
+session id, groups in the Sessions view), with a `span` per turn (`agent_start` closed by
+`agent_end`/`agent_settled`), an `event` per `input` (tagged `input:extension` vs
+`input:interactive` — preserves the delegated-vs-human-typed distinction), an `event` per
+`permission_decision` (surface/result/resolution — the RULE 4.5 judge-evidence case), and a
+`generation` per `assistant_message` with real output text. **Enable per-process** with
+`PI_BROKER_LANGFUSE=1` before launching the broker — off by default because this is a shared
+tool other in-flight dispatches depend on and a new integration shouldn't default-on for it;
+turn it on deliberately per session, don't assume a running broker has it. Verified via a real
+end-to-end session (not a mock) with the trace fetched back through the Langfuse API itself
+(`langfuse-cli api observations list`), not just "no error thrown." **Non-obvious trap, already
+solved — do not rediscover it:** this Langfuse instance runs v4 in
+`LANGFUSE_MIGRATION_V4_WRITE_MODE=events_only`, which silently 207s (accepts-but-drops) the
+classic `langfuse` npm package's REST ingestion — the integration uses the OTEL-based v5 SDK
+(`@langfuse/tracing` + `@langfuse/otel`) instead, the only path this instance actually accepts.
+Credentials: `~/langfuse/.env`'s `LANGFUSE_INIT_PROJECT_PUBLIC_KEY`/`_SECRET_KEY` (the
+keychain's `LANGFUSE_PUBLIC_KEY`/`_SECRET_KEY` entries 401 against this project — they belong
+to something else, do not use them here). Even with tracing on, RULE 7.4 (terminal read) and
+RULE 7.6 (listener log) remain valid fallbacks — Langfuse adds a queryable history, it does not
+replace live observation when you're actively unblocking a permission prompt in real time.
+**As of 2026-08-13, the Pi_Broker repo's changes for this are uncommitted** (`src/langfuse-tracing.mjs`
+new + `broker.mjs`/`pi-broker-bridge.ts`/`package.json` modified) — committing a shared tool
+repo outside this project's own scope was left to the operator, not done autonomously.
 
 ---
 
