@@ -645,6 +645,20 @@ responsive, it may genuinely still be generating. Complements RULE 7.4 (visually
 actual terminal) rather than replacing it — the event log tells you *when*, the terminal tells
 you *what went wrong*.
 
+**RULE 7.7 — Pi Broker dispatches trace into the local Langfuse instance (org `joe-local`,
+project `nukegraph-strongcard`, http://localhost:3001) once wiring lands (build started
+2026-08-13, session 5) — prefer it over manual listener-log/transcript archaeology once it's
+live.** The goal: one trace per dispatched card/session, with spans for each turn
+(`agent_start`→`agent_end`/`agent_settled`), captured `assistant_message` content, and
+`permission_decision` events (these matter most — they're where the sandbox blocks risky
+worker commands, directly relevant to RULE 4.5's judge-evidence rule). Tracing is opt-in and
+degrades silently — a Langfuse outage or disabled flag must never block or slow a dispatch.
+Until this is confirmed live and verified (a real fetched-back trace, not just "no error
+thrown"), RULE 7.4/7.6 (terminal + listener log) remain the primary monitoring method — do not
+assume tracing is active without checking; a stale rule referencing infrastructure that never
+shipped is worse than no rule. Update this entry to state VERIFIED LIVE plus the wiring's
+actual location once confirmed.
+
 ---
 
 ## §8 — Local-model task scoping
