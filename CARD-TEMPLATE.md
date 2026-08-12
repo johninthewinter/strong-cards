@@ -91,6 +91,26 @@ worktree from the plan's baseline commit and actually run this card's Acceptance
 in it. If it fails for a missing-resource reason, the card's provisioning line is wrong —
 fix the card, not the worktree ad hoc. See RULES §3.7 for why this is mandatory, not optional.
 
+**If a `.audit-venv` (or any other shared, symlinked interpreter) is one of the provisioned
+resources, this card's worker instructions MUST state RULE 3.7.4 explicitly, verbatim or
+equivalent:** a symlinked venv's editable package install is a MUTABLE SHARED RESOURCE — it
+resolves to whichever copy of the source was last `pip install -e`'d into it, almost always
+the main repo, NOT this worktree's own edits. Plain `.audit-venv/bin/python -m ...` or
+`.audit-venv/bin/ng ...` will silently test the WRONG code and produce confusing,
+inconsistent results with no error. The worker must instead either:
+- run `PYTHONPATH="$WT/<path-to-src>" .audit-venv/bin/python -m <entry module> ...` to force
+  Python to import from the worktree's own source ahead of the installed package, or
+- use `.audit-venv/bin/python -c "import sys; sys.path.insert(0, '$WT/<path-to-src>'); ...`
+  to the same effect,
+
+and must NEVER run `pip install -e` / `uv pip install -e` against the shared `.audit-venv`
+itself — that would repoint the venv at this worktree's source for every OTHER concurrent
+dispatch too, corrupting their results with zero error signal. A worker whose report shows
+confusing exit-code or behavior mismatches after touching source files that should have
+changed observable behavior almost always means it forgot this and is silently testing stale
+main-repo code — that is the first thing to check before concluding INVALID_CARD or a model
+capability problem.
+
 ## Non-goals (≥ 2, explicit)
 - <capability deliberately not built>
 - <refactor deliberately not done>
