@@ -343,6 +343,21 @@ and/or `hooks/` in this repo — fixing one card is half the job.
 verification: stop the queue, run the judge, apply its card edit, then re-dispatch. The
 judge pass is cheap; a blind retry that burns 45 minutes and re-fails is not.
 
+**RULE 4.5 — When the worker ran via Pi Broker, the judge's evidence set includes the live
+terminal/broker output, not just the card, the diff, and the worker's own report (2026-08-13,
+session 5).** A dispatch under Pi Broker is not headless — the same evidence available to the
+operator mid-turn (RULE 7.4's Terminal-window read, RULE 7.6's broker event log at
+`/private/tmp/pi-broker-ng-s5/listener.log`, and the session's own `.jsonl` transcript at
+`~/.pi/agent/sessions/<worktree-path>/*.jsonl`) is available to the judge too, and omitting it
+means the judge is reasoning about *what the worker claims happened* rather than *what actually
+happened turn-by-turn* — the exact gap RULE 5.4/5.6 exists to close for self-reports. Give the
+judge the session's transcript path and the broker log grep for its session ID as part of its
+brief whenever the failure mode is ambiguous (a stall, a premature stop, a self-report that
+doesn't match the diff) rather than only when the diff itself looks wrong. This does not apply
+to failures with an unambiguous diff-level cause (e.g. a clean assertion mismatch) — reading
+the play-by-play adds cost without changing the verdict there; reserve it for cases where *why*
+the worker did what it did is itself the open question.
+
 ---
 
 ## §5 — Worker self-reports are never acceptance evidence
