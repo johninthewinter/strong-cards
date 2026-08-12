@@ -611,6 +611,25 @@ mentally intended but never actually written into the command string), each requ
 first and read it back if there is any doubt it's correct, rather than trusting an inline
 one-liner typed under time pressure.
 
+**RULE 7.6 — A passive broker controller's live event log is the fastest way to know exactly
+when a turn settled; prefer it to transcript-tailing alone (2026-08-12/13, session 5, card
+P0-26a).** Connecting a passive controller to the broker socket (register-only, never sends —
+see `scratchpad/broker-listener.mjs`, safe to run alongside any in-flight session) and reading
+its append-only log gives a precise, timestamped `agent_start` / `assistant_message` /
+`agent_end` / `agent_settled` stream for every registered session, all in one place, without
+re-parsing a growing `.jsonl` file per session or guessing from `pi` client CPU (which sits
+near-idle while mtplx generates server-side — idle CPU does NOT mean stalled). On this
+incident, `grep '<session-id>' listener.log` immediately showed `agent_settled` at a specific
+timestamp ~16 minutes before the check — the turn had genuinely ended (the worker stopped
+after writing only a fail-first test, never implementing the fix or running it), not stalled
+mid-generation as the quiet `.jsonl` tail and idle CPU alone suggested. **Practical rule:**
+before concluding a session is stalled, check the listener log for `agent_settled` first — if
+present, the turn is over and the worker likely just stopped short of the card's full scope
+(needs a nudge/follow-up prompt, not a stall diagnosis); if absent and the model-server is
+responsive, it may genuinely still be generating. Complements RULE 7.4 (visually check the
+actual terminal) rather than replacing it — the event log tells you *when*, the terminal tells
+you *what went wrong*.
+
 ---
 
 ## §8 — Local-model task scoping
