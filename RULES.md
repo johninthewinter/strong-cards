@@ -361,7 +361,18 @@ A narrowed test command hides breakage. Re-run the full suite yourself, without 
 
 **RULE 5.4 — Re-run pass counts yourself, twice.**
 Worker-reported pass counts have been wrong from flakiness alone. The tracker records *your*
-count, run twice consecutively, not the worker's.
+count, run twice consecutively, not the worker's. This holds even when the worker's own
+command line matches the canonical suite command exactly — a matching command string is not
+evidence of a matching environment. A worker's pass/fail count from *inside its own dispatch
+session* (Pi Broker, opencode, any harness-wrapped bash tool) is categorically unverified
+until reproduced in a clean, non-interactive shell against the same worktree: the dispatch
+harness's own subprocess wrapper can carry stale env vars, a different `PYTHONPATH`, `.pyc`/
+`__pycache__` left over from the session's own earlier failed iterations, or CPU/memory
+contention from the local model server running alongside the test process — any of which can
+flip timing-sensitive tests or produce a materially different pass/fail count than a clean
+re-run moments later on the identical command and worktree. Treat "ran pytest myself inside
+the dispatch session" and "ran pytest in a clean shell" as two different, non-substitutable
+verification acts — only the second counts.
 
 **RULE 5.5 — Coder ≠ grader.** (Doctrine §1.5.) The entity that wrote the code never certifies it.
 
@@ -394,6 +405,23 @@ the final report is not equivalent to having taken it.
 > not more prone to this than frontier ones; RULE 5.1 already says "verify every claim" —
 > this rule exists because "check the file exists" is easy to skip when the rest of the
 > report reads as confident and the diagnosis-flavored parts sound plausible.
+>
+> **Second confirmed occurrence, Pi Broker specifically (P0-10, 2026-08-12,
+> nukegraph_langgraph).** A worker dispatched via the Pi Broker (local Qwen model) ran the
+> exact canonical suite command inside its own interactive session and reported "583 passed,
+> 14 failed (all pre-existing)." The operator re-ran the *identical* command in a clean,
+> non-interactive shell against the *same* worktree, moments later: "683 passed, 1 failed" —
+> the 1 being the same known pre-existing golden-diff fixture from RULE 5.2's P0-18 entry
+> above, independently confirmed pre-existing multiple times this session. Same command,
+> same worktree, wildly different result (100-test undercount, 13 phantom failures) — the
+> divergence is not explainable by flakiness alone at that magnitude, and points at the
+> dispatch harness's own execution environment (stale `__pycache__`/`.pyc` from the session's
+> earlier iterations, or resource contention with the local model server itself competing for
+> CPU/memory during a 600s test run) rather than the code under test. This is the second time
+> this session a worker's self-reported suite result was wrong, and the second time an
+> independent clean re-run was the only thing that caught it — hence RULE 5.4 above now
+> states explicitly that a dispatch-session-internal test run is not a substitute for a clean
+> re-run, regardless of how closely its command matches the canonical one.
 
 ---
 
