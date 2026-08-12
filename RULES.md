@@ -250,6 +250,67 @@ already has merged.
   trusting `.audit-venv/bin/ng` output for the next thing — do not assume the venv still points
   where you last left it.
 
+**RULE 3.7.5 — `CARD.md` (or any dispatch-scaffolding file) is provisioned into a worktree as an
+UNTRACKED file, never as a commit. If it must be committed for some reason, `git rm` it from the
+card branch itself before merge — never leave that cleanup to a post-merge follow-up on main.**
+
+**Confirmed 100% recurrence, this session (2026-08-12, `nukegraph_langgraph`): P0-08, P0-12,
+P0-07c, P0-06, P0-14 — five dispatches, five leaks, five manual `git rm` follow-up commits on
+main.** Root cause: the operator's own dispatch procedure ran `git add CARD.md && git commit -m
+"dispatch: add CARD.md for card/<slug>"` inside the fresh worktree *before* handing it to the
+worker, specifically so the worker's coding session had the card text on disk. That commit puts
+`CARD.md` on `card/<slug>`'s branch history from turn one. No worker ever intentionally commits
+it — RULE 3.4's `git merge card/<slug> --no-edit` pulls in the *entire* branch, including that
+first scaffolding commit, automatically, every time, regardless of what the worker itself
+touched. This is not a worker failure and not a §3.3 Touch-List violation to catch in review — it
+is a self-inflicted wound in the provisioning step, and it reproduced identically across five
+different cards/workers because the same flawed procedure ran five times.
+
+**Fix — provision CARD.md as untracked, full stop:**
+```bash
+git worktree add ../.wt/card-<slug> -b card/<slug>
+cp CARD.md ../.wt/card-<slug>/CARD.md        # copy only — no git add, no git commit
+```
+The worker still has the card text on disk at the same path it always did; nothing about the
+worker's experience changes. What changes is that `CARD.md` now sits in the worktree exactly like
+a `.venv` or any other gitignored/untracked provisioning artifact (§3.7.1's own category) — `git
+status --porcelain` will show it as `??`, `git diff --stat` will never mention it, and `git merge
+card/<slug>` has nothing to pull in because it was never on the branch. This is strictly better
+than option (b) (worktree-local `.git/info/exclude`) or option (c) (a mandatory pre-merge `git rm`
+step): (b) still requires the operator to remember a second provisioning step and only suppresses
+*accidental* re-adds, it does nothing about the procedure that already, deliberately, commits the
+file; (c) keeps the defect commit in the branch and bolts on a manual cleanup step at exactly the
+seam that already failed five times in a row — a step that must be remembered and run correctly
+every single time is not a fix, it is the same failure mode restated as a checklist item. Making
+the file untracked removes the leak path structurally: there is no branch history containing
+`CARD.md` for a `--no-edit` merge to ever pull in, so there is nothing left to remember.
+
+**Belt-and-suspenders, not a substitute for the above:** also add a `CARD.md` line to the
+worktree's `.git/info/exclude` at provisioning time (worktree-local, not the repo's committed
+`.gitignore` — this is scaffolding, not a project concern). This guards against a worker or a
+future operator habit accidentally running `git add -A`/`git add .` inside the worktree and
+picking the untracked `CARD.md` back up without noticing; it does not, by itself, fix anything if
+the provisioning step still commits the file up front, which is why it is secondary to changing
+the `cp`-not-`commit` procedure itself.
+
+**If a workflow genuinely requires `CARD.md` to be committed** (e.g. an external harness that only
+reads files it finds tracked in the worktree's git index) — the fallback is this rule's option
+(c) above, but treat it as a documented exception, not the default: `git rm CARD.md && git commit
+-m "chore: drop dispatch scaffolding"` on `card/<slug>` itself, run by the operator as a mandatory
+step of RULE 3.3's pre-merge review (verify it happened via `git show card/<slug>:CARD.md` failing
+with "does not exist" — not by memory), strictly *before* `git merge`, never as a follow-up commit
+on `main` after the fact.
+
+> **Why.** Same incident class as §3.7's opening finding (a well-reviewed process turned out to be
+> undispatchable/leaky not because any single dispatch was reviewed poorly, but because the
+> *provisioning step itself* was systematically wrong in a way no per-card review would catch).
+> Here the review (§3.3's diff/status inspection) DID catch the leak every time — five separate
+> follow-up `git rm` commits on main are direct evidence the operator was checking — but catching
+> it after the fact and fixing it before the fact are not the same cost. A 100% recurrence rate
+> across five independent cards, with the exact same root cause named identically each time, is
+> the definition of a process gap rather than a card-by-card mistake (doctrine §1: system
+> coherence outranks a clean-looking individual merge).
+
 ---
 
 ## §4 — Judge on fail, always, before any retry
