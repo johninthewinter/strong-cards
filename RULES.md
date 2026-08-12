@@ -494,6 +494,45 @@ the final report is not equivalent to having taken it.
 > worker's Touch List, don't assume the nearest-sounding already-planned future card covers
 > it; read that other card's actual Touch List before relying on it for sequencing.**
 
+**RULE 5.8 — a blocked-by-permission `git commit` is not a completion signal, and a worker
+must not treat it as one (P0-16, 2026-08-12, nukegraph_langgraph, same run as RULE 5.7).**
+After staging its diff, the worker tried to run `git commit` itself — correctly blocked, since
+only the controller commits, after independent verification (§2/§3). Its very next message
+declared "**P0-16 is complete**" and stopped, having skipped most of its own card's "State
+explicitly in your final report" checklist (fail-first evidence quoted verbatim, positive-case
+region fields quoted from a real run, node-survives assertion, both negative cases, and the
+full-suite result lines) — items the card required by name. The commit-block was read as "my
+job is done, only the operator's mechanical step remains," when it should have been irrelevant
+noise: the card's own report checklist runs regardless of who commits. Two operator round-trips
+(a SCOPE WIDENING ADDENDUM, then a RETRY ADDENDUM) were needed to catch what that checklist
+would have caught first-pass. **Card wording fix:** the card's "State explicitly in your final
+report" section (or the standing dispatch/system prompt) must say, verbatim near the top of that
+section: *"Complete this checklist before your final message, regardless of whether `git
+commit`/`git push` succeeds, is blocked, or is not your job to run. A permission block on commit
+is not a stop condition and not evidence of completion — it is noise. Do not declare the card
+complete until every lettered item below is answered with real values from a run you just
+executed."* This turns "commit succeeded" from an implicit (and wrong) completion proxy into an
+explicit non-signal, and makes the checklist itself — not the commit attempt — the last gate
+before the worker's stop.
+
+**RULE 5.9 — a retry/scope addendum belongs in its own small standalone file, not appended to
+the bottom of an already-large CARD.md (P0-16, 2026-08-12, same run).** After a RETRY ADDENDUM
+was appended near line 528 of a 628-line card, the worker burned roughly 15–20 tool calls and
+~3 minutes re-reading the same section — `read` with explicit offset/limit, `sed -n`, `grep -A`,
+and two `python3` heredocs — before it worked. The first line-ranged `read` (`offset=528,
+limit=100`) actually returned the complete addendum text on the first try; every re-read after
+that fetched the identical content again, and the worker's own follow-up `python3` extraction
+script (splitting on the next `## ` heading) then mis-truncated the addendum to a smaller,
+wrong-boundary excerpt — a self-inflicted bug, not a hard truncation ceiling in the read tool.
+The waste was the worker not trusting/recognizing that it already had the full section, not a
+tool limit. **Process fix, independent of that nuance:** never append a retry/scope addendum to
+a large existing CARD.md. Write it as its own small file (`CARD-P0-16-RETRY-2.md` or similar,
+a few hundred lines at most) that stands alone, contains only the new instructions plus the
+minimum quoted context needed to act on them (do not make the worker cross-reference back into
+the original card for values it can just be given), and is delivered as "read this new file
+now"; leave the original CARD.md untouched. This removes the need for any fishing/re-verification
+loop regardless of whether the underlying cause is a tool ceiling or a worker confidence problem.
+
 ---
 
 ## §6 — Investigate early; probe, don't watch the clock
