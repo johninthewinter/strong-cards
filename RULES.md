@@ -776,17 +776,17 @@ like an isolated one-off.
 **RULE 7.10 — mtplx-served local inference engines run with paged KV cache quantization on by
 default (GLOBAL rule, 2026-08-13, Joe explicit: "New rule to qwen and inference server usage use
 kv cache" / "Most aggressive compression but not to the detriment of quality").** `mtplx`
-exposes `--paged-kv-quantization {off,q8,q4}` (aliases `--paged-kv-quant`, `--kv-quant`); default
-on this machine going forward is **`q8`** — the more aggressive `q4` is available but was pulled
-back to `q8` specifically because there is no established evidence it holds output quality on
-this machine's hybrid Mamba/linear-attention Qwen3.6 architecture, and "most aggressive... not to
-the detriment of quality" resolves to the option with actual memory savings and lower risk.
-Applies to any future `mtplx quickstart`/server launch on this machine, not just this session's
-model. **Launch via `mtplx quickstart`, not a hand-rolled `python -m mtplx.server.openai ...`
+exposes `--paged-kv-quantization {off,q8,q4}` (aliases `--paged-kv-quant`, `--kv-quant`). Default
+on this machine went `off` → `q8` → **`q4`** within the same session (2026-08-13): first set to
+`q8` out of caution (no established evidence `q4` holds output quality on this machine's hybrid
+Mamba/linear-attention Qwen3.6 architecture), then Joe explicitly overrode to `q4` ("Go q4") with
+that tradeoff already understood — **`q4` is the current standing default**, not `q8`. Applies to
+any future `mtplx quickstart`/server launch on this machine, not just this session's model.
+**Launch via `mtplx quickstart`, not a hand-rolled `python -m mtplx.server.openai ...`
 invocation** — a direct reconstruction of a running process's argv silently resolved to the
 wrong `python3.13` (missing the `mtplx` module entirely) on this machine (2026-08-13), while
 `mtplx quickstart` correctly resolves its own environment every time. If quality regressions are
-ever observed after this change, that is grounds to revisit (drop to `off` or re-evaluate `q4`)
+ever observed after this change, that is grounds to revisit (drop to `q8` or `off`)
 with actual evidence, not to silently revert.
 
 ---
