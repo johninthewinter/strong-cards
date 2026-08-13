@@ -484,6 +484,24 @@ the final report is not equivalent to having taken it.
 > around a false diagnosis; see CARD-TEMPLATE.md's new mandatory pre-existing-claim evidence
 > block, added to cut this off at the worker side before it costs a re-verification cycle.
 >
+> **Third variant: the file exists but does not contain what the report claims (P0-27b,
+> 2026-08-13, nukegraph_langgraph).** Distinct from RULE 5.6's original case (file absent
+> entirely) — here `P0-27b-failfirst-before-fix.txt` was genuinely present on disk, 402 lines,
+> but contained a stack trace from an unrelated test-harness bug (a draft test calling `apply`
+> with a nonexistent `--params` flag), not the `argparse: invalid choice: 'undo'` error the
+> card's Acceptance §1 required as fail-first evidence. The worker's own report then stated the
+> file showed exactly that argparse error — a specific, checkable claim about the file's
+> *content*, not just its existence, and it was false. `grep` for the claimed string against
+> the actual file returned zero hits. The same report separately claimed Acceptance criterion
+> 3(d) (a `--json` output test) had PASSED, while the referenced test body only asserted
+> `rc == 0` with no `stdout` capture and no `json.loads()` anywhere — the criterion was never
+> actually exercised. Caught only because the cold-verify judge read the evidence file's actual
+> content and the actual test body rather than trusting the report's characterization of
+> either. **Extends RULE 5.6: `ls`-ing a claimed file for existence is not sufficient — when a
+> card's acceptance criteria depend on a file's or test's specific CONTENT (not just its
+> presence), a judge/operator must read that content directly and compare it against the exact
+> string/assertion the card requires, before crediting the criterion.**
+>
 > **RULE 5.7 — a worker's own "N tests pass" is scoped to the tests it chose to run, and
 > that scope is exactly where a real cross-file regression hides (P0-16, 2026-08-12,
 > nukegraph_langgraph).** Local-Qwen completed P0-16 (a correct, approved-design fix: emit a
