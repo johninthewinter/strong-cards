@@ -848,16 +848,20 @@ project) is NOT an acceptable per-project config — it is the same default for 
 project on the machine and violates "each project may have a different set of traces."
 Correct setup per project, done once, and re-verified as still present any time work
 resumes in that project after a gap: (1) create/confirm a dedicated Langfuse project for
-this codebase inside the one global instance, grab its key pair; (2) commit a project-root
-env-loading mechanism (e.g. a checked-in, non-secret-bearing `.envrc`/launch wrapper that
-sources the real keys from the keychain, per the "never `.env` files for secrets, use
-`secret get`" convention in `~/.claude/CLAUDE.md`) that any worktree of this project picks
-up automatically — not a flag hand-typed into one worktree's launch script (the
-`launch-p0-29a.sh` pattern is exactly what NOT to rely on for this: it dies with the
-worktree). Before assuming Langfuse is wired for a returning project, verify: does the
-project-root config exist, and does `PI_BROKER_LANGFUSE=1` plus this project's own
-public/secret key pair actually get exported for every dispatch in this project, not just
-the worktree that happened to set it up.
+this codebase inside the one global instance, grab its key pair; (2) place a
+non-secret-bearing env-loading wrapper (sources the real keys from the keychain via
+`secret get`, per the "never `.env` files for secrets" convention in
+`~/.claude/CLAUDE.md`) at a **machine-local, NOT git-committed** path — Joe's explicit
+correction, 2026-08-13: "Don't put in git" — a repo-committed script is dead weight (or
+worse, a misleading no-op) for anyone else who clones the repo, since it depends on this
+operator's own local Langfuse instance/keychain. Convention: `~/.config/<project-slug>/langfuse-env.sh`.
+This is NOT worktree-scoped either — a home-directory path is visible to every worktree of
+every project on this machine, same as a git-committed file would be, without polluting
+the repo. `.gitignore` should still block stray `.env`/secret files in the repo as a
+generic safeguard, independent of this. Before assuming Langfuse is wired for a returning
+project, verify: does `~/.config/<project-slug>/langfuse-env.sh` exist, and does sourcing
+it actually export `PI_BROKER_LANGFUSE=1` plus this project's own public/secret key pair
+for every dispatch in this project, not just the worktree that happened to set it up.
 
 ---
 
