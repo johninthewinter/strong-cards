@@ -564,6 +564,18 @@ with no corresponding file change is incomplete, not paused."* Apply this to the
 dispatch prompt template alongside RULE 5.8's blocked-commit wording, not as a bolt-on only
 after the first occurrence per card.
 
+**Sibling case, confirmed 2026-08-13, P0-26b cycle 15:** the turn can also end one step LATER
+than RULE 5.10's original case — the worker issues the correct edit tool call, then the turn
+settles before that call's result is ever read back, and the worker (in its next turn) reports
+the edit as done without having verified it. Here, an independently-fetched-back verdict said
+the CARD.md addendum "wasn't visible" (a stale read, timing-related to when the controller
+refreshed the file mid-dispatch) yet the worker proceeded to issue the edit anyway from the
+verdict text alone — and the edit never actually landed (`grep` confirmed the target line
+unchanged). **Same root cause as RULE 5.10 (turn ends one step short of confirmed completion),
+different point in the sequence** — narrating-without-acting vs. acting-without-confirming.
+Controller-side mitigation (already RULE 5.4/5.6): never trust a worker's claimed edit; grep the
+actual file before treating a fix as landed, exactly as already required for test/suite results.
+
 ---
 
 ## §6 — Investigate early; probe, don't watch the clock
