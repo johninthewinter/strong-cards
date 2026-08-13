@@ -803,6 +803,37 @@ comparison reading after, log both (tokens/sec, config flags in effect) in whate
 or queue file is tracking current work, so a change's real effect is on record rather than
 assumed from first principles.
 
+**RULE 7.12 — capture every genuinely-free model-usage metric already flowing through the Pi
+Broker event path into the Langfuse trace, not just output text (GLOBAL rule, 2026-08-13, Joe:
+"we measure all the info on the model usage. Be sure it's in the langfuse" / "make me the list
+and what we could add for the llm as a judge and the improvement. No cheating it's free").** "Free"
+means: the data already exists on an object the code already touches — extracting and forwarding
+it costs nothing extra (no new request, no new round-trip), as opposed to something that would
+require an additional API call or a new instrumentation surface. Implemented 2026-08-13 in
+`~/src/Pi_Broker/` (uncommitted per RULE 7.7's precedent — shared-tool commits left to the
+operator): `pi-ai`'s `AgentMessage.usage` (`input`/`output`/`totalTokens`/`cacheRead`/
+`cacheWrite`/`cacheWrite1h`/`reasoning`/`cost`) was available on every `message_end` event but
+`pi-broker-bridge.ts` was only extracting `text`/`stopReason` — now forwarded whole and mapped
+onto Langfuse's `usageDetails`/`costDetails` generation fields
+(`src/langfuse-tracing.mjs`'s `usageDetailsFrom`/`costDetailsFrom`). Real `completionStartTime`/
+`endTime` timestamps (`Date.now()` at `agent_start` and `message_end`, both already-emitted
+events) were added so Langfuse derives real per-generation latency — combined with
+`usageDetails.output`, this gives real TPS in the trace with zero extra requests, closing the
+gap RULE 7.11's manual-benchmark approach exists to work around when a trace isn't available.
+**Known free metrics not yet wired, next in line if picked up:** per-generation `model`/
+`modelParameters` (currently only stamped once at `session_start`); `ContextUsage`
+(`tokens`/`contextWindow`/`percent` — already exposed by the `pi` SDK, useful for a judge to
+correlate degraded output against near-saturated context); tool-call counts per turn (from
+`TurnEndEvent.toolResults`, already on an event the bridge already receives); aggregated
+`permission_decision` counts per turn (a friction metric — how many prompts a card needed);
+turn-to-turn gap time (operator/controller latency vs. model latency); a RULE-5.10-incident
+tag (settle-without-tool-call, a real recurring failure pattern this session hit repeatedly,
+tag-able directly from the existing `agent_end`/`assistant_message` event sequence without new
+instrumentation). Do not silently expand this list further without checking it against the
+"already on an object the code already touches" bar — that is what makes it free; anything
+requiring a new request or a new SDK hook is a different, non-free proposal and should be
+evaluated on its own cost/benefit, not folded into this rule.
+
 ---
 
 ## §8 — Local-model task scoping
