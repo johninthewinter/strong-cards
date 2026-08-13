@@ -576,6 +576,21 @@ different point in the sequence** — narrating-without-acting vs. acting-withou
 Controller-side mitigation (already RULE 5.4/5.6): never trust a worker's claimed edit; grep the
 actual file before treating a fix as landed, exactly as already required for test/suite results.
 
+**RULE 5.11 — every Strong Card, GLOBAL, from this point forward, includes a Behavioral spec
+(Gherkin Given/When/Then) section, and every test the worker writes maps 1:1 to a scenario in
+it.** Operator instruction, 2026-08-13, explicit and standing: "For all the future card, add
+gherkin approach and test to all strong card" — this is not project-scoped, it applies to
+every card authored on this machine regardless of repo. Placement: between `Non-goals` and
+`Acceptance criteria` in `CARD-TEMPLATE.md` (already updated). One scenario per behavioral
+assertion in Acceptance criteria — happy path AND every edge/negative case named there, not
+happy-path-only. The fail-first test (Acceptance §1) and every subsequent test the worker adds
+must be named/mapped to a specific scenario; a test with no matching scenario, or a scenario
+with no corresponding test, is a card gap the worker must flag in its final report (h). This
+is authored at card-writing time (before dispatch, part of freezing the card per doctrine
+§1.4) — it is not something the worker invents on its own, since an ambiguous or missing
+scenario is exactly the kind of gap RULE 4.2/5.9 already treats as a card defect, not a worker
+failure. Reviewer checklist in `CARD-TEMPLATE.md` updated to gate on this before dispatch.
+
 ---
 
 ## §6 — Investigate early; probe, don't watch the clock

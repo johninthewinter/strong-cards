@@ -133,6 +133,31 @@ real CLI had no `env=` and silently tested the shared venv's stale install.
 - <capability deliberately not built>
 - <refactor deliberately not done>
 
+## Behavioral spec (Gherkin — mandatory, RULES §5.11)
+Every card states its behavior as Given/When/Then BEFORE the worker writes any test. This is
+the bridge between `Defect` (what's wrong) and the fail-first test (proof it's fixed) — it
+forces the acceptance criteria to be phrased as observable behavior, not implementation detail.
+
+One scenario per behavioral assertion in Acceptance criteria below (happy path + every edge
+case named there — do not write only the happy path):
+
+```gherkin
+Scenario: <short name matching Acceptance criterion #2>
+  Given <concrete starting state — real fixture/file/call, not "some input">
+  When <the action that exercises the defect/gap>
+  Then <the observable, assertable outcome — matches an actual test assertion>
+
+Scenario: <edge/negative case matching Acceptance criterion #3>
+  Given <...>
+  When <...>
+  Then <...>
+```
+
+The worker's fail-first test (Acceptance §1) and each subsequent test must map 1:1 to a
+scenario here — name the test after the scenario (e.g. `test_watcher_updates_ir_on_py_change`
+↔ "Scenario: external edit triggers re-analysis within 300ms"). A test with no matching
+scenario, or a scenario with no matching test, is a card gap — flag it in the report per (h).
+
 ## Acceptance criteria — FAIL-FIRST MANDATORY
 1. **Write the failing test FIRST and capture its output before the fix exists.** Save it
    (e.g. `<ID>-failfirst-before-fix.txt`) and paste it in your report. A test written after
@@ -228,3 +253,5 @@ fix, do not widen scope to make something pass, do not delete a failing test.
 - [ ] Every `Defect` claim was re-derived by execution/grep against CURRENT code by whoever is
       dispatching, not trusted from an upstream plan/research document — even an Opus-authored
       one (RULES §12.2).
+- [ ] Behavioral spec (Gherkin) is present, one scenario per Acceptance criterion, including
+      edge/negative cases — not just the happy path (RULES §5.11).
