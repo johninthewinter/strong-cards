@@ -77,12 +77,46 @@ argument, it is not an acceptable dispatch harness.
 
 **RULE 3.3 — Inspect the diff before merging, over the WHOLE tree.**
 ```bash
-git -C <worktree> status --porcelain     # untracked/deleted files the diff alone hides
-git -C <worktree> diff --stat            # full tree, not just the expected files
+BASE=<recorded worktree-start commit>
+git -C <worktree> status --porcelain
+git -C <worktree> diff --stat "$BASE" -- .
+git -C <worktree> diff --name-only "$BASE" -- .
+git -C <worktree> ls-files --others --exclude-standard
 ```
 Compare the changed-file set against the card's Touch List. **Any file outside the Touch
 List is a finding**, even if the change looks harmless. Deletions are the highest-severity
-finding — check `status --porcelain` for `D` entries explicitly.
+finding — check `status --porcelain` for `D` entries explicitly. `diff --stat` alone omits
+staged-but-uncommitted changes and untracked files — both other commands above exist to
+close that gap.
+
+**RULE 3.3a — A reviewer may receive a card diff only after the controller proves the review
+packet represents the current worktree.**
+Before invoking any reviewer (Sonnet judge, GPT review, or otherwise) on a card's change, the
+controller MUST materialize a review packet from the recorded worktree-start commit, not from
+committed branch history: `git -C <worktree> diff --binary <BASE> -- .`. Do not use
+`git diff <base>...HEAD` while the card's changes are uncommitted; that command reviews only
+committed history and can silently produce an empty patch.
+
+The controller must verify all of the following before dispatch:
+1. `git status --porcelain` is non-empty; otherwise this is a no-change attempt, not a
+   substantive diff-review request.
+2. The materialized tracked-file patch is non-empty (`wc -c` is greater than zero).
+3. Every untracked path reported by `git status --porcelain` is supplied to the reviewer as
+   file content or as an appended `git diff --no-index --binary /dev/null <path>` patch,
+   because ordinary `git diff` does not include untracked files.
+4. The packet's changed-path set, plus its separately supplied untracked files, covers every
+   path in `status --porcelain`; compare that complete set with the Touch List.
+
+An empty or incomplete packet is a controller error. Do not send it to a reviewer; discard any
+verdict based on it, regenerate the packet, and re-run the review. It is not a worker RETRY,
+card finding, or judge-triggering failure.
+
+> **Why.** 2026-08-13, `nukegraph_langgraph` P0-36: the controller built a review prompt with
+> `git diff <base>...HEAD` while the card's changes were still uncommitted in the worktree.
+> The triple-dot form only diffs committed history, so the packet was empty. GPT-5.6 correctly
+> returned RETRY citing "no diff was provided" — a real finding about the packet, misread at
+> first glance as a finding about the code. Fixed by rebuilding the packet with
+> `git diff <base> -- .` (no triple-dot, includes the working tree) and re-running the review.
 
 **RULE 3.4 — Merge, then remove.**
 ```bash
@@ -366,6 +400,40 @@ the worker did what it did is itself the open question.
 `git diff --stat` over the **whole tree** (not just the files you expected) plus direct
 execution of the tests. Grep the actual code for the claimed change at the claimed location.
 
+**RULE 5.1a — A multi-line source edit is not complete until the resulting file parses.**
+Immediately after any multi-line or heredoc-style string-literal edit — the kind of edit where
+a tool call can write the escaped representation of code (literal `\n`, `\"`) instead of real
+newlines and quotes — the worker MUST run the card's language-appropriate syntax-only check
+against every changed source or test file before doing any unrelated work.
+
+For Python, the default is an `ast.parse` check against the file currently on disk, for
+example: `python3 -c 'import ast, pathlib, sys; [ast.parse(pathlib.Path(p).read_text()) for p
+in sys.argv[1:]]' <changed-files>`. A project linter may substitute only when it deterministically
+fails on syntax errors and the card names the exact command.
+
+A failed parse is an immediate stop-and-repair condition: do not continue to another Fix step,
+run broader tests, or report progress until the file parses again. A missing or failed required
+post-edit syntax check discovered later is a failed attempt under §4, not a harmless omission.
+
+The controller independently re-runs the same check against all changed syntax-bearing files
+before reviewer dispatch or merge (RULE 3.3a). A diff that cannot parse is never sent for
+substantive review.
+
+**Enforcement boundary.** This must be enforced by a post-write guard in the worker's own
+edit/runtime harness wherever that harness exposes a post-write event. The controller-side
+dispatch hook cannot enforce it directly: it sees the dispatch command, not the worker's
+internal edit-tool calls (§3.8). For a harness without such a callback, the mandatory worker
+command plus the controller's independent re-run is the fallback — do not describe that
+fallback as hook enforcement.
+
+> **Why.** 2026-08-13, `nukegraph_langgraph` P0-36: the worker's own string-literal-based edit
+> tool inserted a block into a test file containing literal `\n`/`\"` escape sequences instead
+> of real newlines and quotes, corrupting it. Not caught until the controller ran
+> `python3 -c "import ast; ast.parse(...)"` and got a SyntaxError — the worker had already
+> moved on to other Fix steps (though it did later notice on its own and stop). Complements
+> rather than duplicates RULE 5.1: that rule catches a bad artifact eventually; this rule
+> catches a serialization corruption at its first safe detection point.
+
 **RULE 5.2 — "Pre-existing, unrelated" is a claim, and it is the highest-risk claim there is.**
 It is the exact sentence a worker produces when it has broken something. Treat it as a
 red flag requiring proof: check out the baseline commit, run the same test, and show it
@@ -388,6 +456,23 @@ flip timing-sensitive tests or produce a materially different pass/fail count th
 re-run moments later on the identical command and worktree. Treat "ran pytest myself inside
 the dispatch session" and "ran pytest in a clean shell" as two different, non-substitutable
 verification acts — only the second counts.
+
+**Definition — "twice consecutively" means an adjacent green pair, not two green results
+somewhere in a transcript.** Maintain an ordered full-suite-run ledger for the card revision
+and worktree. At the moment acceptance is claimed, the last two canonical full-suite
+invocations in that ledger, runs N and N+1, must both have exited 0 and met the stated baseline
+count. No other full-suite invocation may occur between them. Any non-zero full-suite result,
+including a known flaky failure, resets the count: a later green is run 1 of a new pair, not
+proof paired with an earlier green. Record each run's ordinal, command, exit status, and summary
+line. "Two green runs exist in the log" does not satisfy this rule.
+
+> **Why.** 2026-08-13, `nukegraph_langgraph`, multiple cards: acceptance required "run the full
+> suite twice in a row, both green" to tolerate one known pre-existing flaky test. In practice,
+> workers, the controller, and even a reviewing judge independently got green / flake-fail /
+> flake-fail / flake-fail / green and initially treated that as satisfying the requirement,
+> because *a* green pair existed somewhere in the transcript. Only caught because a GPT-5.6
+> review explicitly checked run-adjacency rather than "did green appear twice." Fixed each time
+> by running one more pass to produce a genuine back-to-back pair.
 
 **RULE 5.5 — Coder ≠ grader.** (Doctrine §1.5.) The entity that wrote the code never certifies it.
 
@@ -1443,6 +1528,37 @@ green — the same kind of unstated, unverified assumption §3.7 already forbids
 Before freezing such a card, run the full suite once on the unmodified baseline (or explicitly
 flag in the card that this has not been checked) so a later failure can be triaged against a
 known-good baseline instead of discovered cold at acceptance time.
+
+**RULE 12.8 — A scope fence must be dependency-checked against its own Fix before freeze.**
+For every `Do NOT touch` file, test, or named mechanism, and for every Fix step that deletes,
+bypasses, tightens, replaces, or otherwise changes existing behavior, the card author MUST
+perform and record a scope-fence dependency sweep before freezing the card.
+
+The sweep must (1) identify the symbols, predicates, outputs, exceptions, or behaviors the Fix
+changes; (2) grep and trace each scope-fenced file/test for reliance on them; and (3) run every
+plausibly dependent fenced test on baseline. A textual grep alone is not enough when the test
+depends through public behavior rather than a direct symbol reference.
+
+If a fenced test or mechanism relies on behavior the Fix requires changing, resolve the
+contradiction before dispatch by exactly one of these: (a) revise the Fix; (b) explicitly add
+the necessary test/change to the Touch List and Acceptance criteria in a newly frozen card;
+(c) split a separate successor card; or (d) mark the card `INVALID_CARD`. A card must never
+simultaneously require removal of behavior and forbid the change needed to keep a dependent
+test correct.
+
+Record the result directly under `Do NOT touch` as `Scope-fence dependency sweep:` with the
+files/tests examined, the changed behavior, and the evidence for compatibility. An operator
+exception changes the card and therefore requires a new frozen/hashed version; it is not an
+implicit worker permission to widen scope.
+
+> **Why.** 2026-08-13, `nukegraph_langgraph` P0-36: the card's own Fix step mandated deleting a
+> pre-analysis check, but that same check was the only reason an existing, explicitly
+> forbidden-to-touch test passed. The worker correctly recognized the contradiction, stopped per
+> doctrine §1.6 (`INVALID_CARD` is honorable), and proposed resolution options rather than
+> improvising. The operator approved a narrow one-off exception via explicit confirmation. This
+> rule moves that discovery from mid-dispatch to card-authoring time. Distinct from RULE 12.7:
+> that rule triages a full-suite failure discovered after the fact; this rule prevents the
+> self-contradiction from ever reaching dispatch.
 
 ---
 

@@ -242,6 +242,10 @@ fix, do not widen scope to make something pass, do not delete a failing test.
 - [ ] Every `Defect` claim quotes real current code at a real current line.
 - [ ] Touch List ≤ 3 files (local model) — if more, split first (RULES §8.4).
 - [ ] Every other card's mechanism that lives in these same files is named in `Do NOT touch`.
+- [ ] Scope-fence dependency sweep complete (RULES §12.8): for every `Do NOT touch`
+      file/test and every Fix behavior being removed or changed, grep/trace for dependency,
+      run each plausible dependent test on baseline, and record the resolution in the card.
+      No fenced test may depend on behavior this card is required to delete or alter.
 - [ ] Fail-first is explicitly mandatory and the "what if it's greenfield" case is answered.
 - [ ] For a local-model dispatch: the write-then-`cat`-to-confirm instruction for every
       required evidence file is present verbatim (RULES §5.6, 4/4 local-Qwen pattern).
