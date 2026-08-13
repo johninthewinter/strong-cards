@@ -789,6 +789,20 @@ wrong `python3.13` (missing the `mtplx` module entirely) on this machine (2026-0
 ever observed after this change, that is grounds to revisit (drop to `q8` or `off`)
 with actual evidence, not to silently revert.
 
+**RULE 7.11 — measure real TPS after any inference-engine config change that could plausibly
+affect it (KV cache quant, profile, batching preset, etc.), not just "should be faster/slower"
+reasoning (GLOBAL rule, 2026-08-13, Joe: "Ran speed monitor please added rule").** A timed
+completion request against the engine's own `/v1/chat/completions` (or equivalent) endpoint,
+measuring wall-clock ÷ `usage.completion_tokens` from the response, is the cheap, direct way to
+get a real number — do not substitute reasoning about memory-bandwidth-vs-compute-bound decode
+for an actual measurement when one is easy to take. **Never run this measurement while a `pi`
+dispatch session has a turn in flight** (RULE 7.6 — check the broker listener log for
+`agent_settled`) — a concurrent request contends for the same serial-scheduled engine and skews
+both the benchmark and the live dispatch. Take a baseline reading before a config change and a
+comparison reading after, log both (tokens/sec, config flags in effect) in whatever status line
+or queue file is tracking current work, so a change's real effect is on record rather than
+assumed from first principles.
+
 ---
 
 ## §8 — Local-model task scoping
