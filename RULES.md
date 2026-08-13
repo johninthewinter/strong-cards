@@ -834,6 +834,31 @@ instrumentation). Do not silently expand this list further without checking it a
 requiring a new request or a new SDK hook is a different, non-free proposal and should be
 evaluated on its own cost/benefit, not folded into this rule.
 
+**RULE 7.13 — Langfuse config is set once per PROJECT, globally, never per-worktree or
+per-launch-script (GLOBAL rule, 2026-08-13, Joe: "each project we set up langfuse for the
+given project. The langfuse muse be global to that project not just a worktree not just a
+part of it. The entire project all the time. If I go back into this project it must be
+set. Each project may have a different set of traces too").** The Langfuse *server* is
+global to the machine (one Docker stack at `~/langfuse/`, org `joe-local` — never spin up
+a second instance). What is project-scoped is the *project's own key pair* inside that
+one instance, so its traces land in their own Langfuse project, not commingled with
+every other project's traces. Consequence: `langfuse-tracing.mjs`'s default credential
+fallback (`~/langfuse/.env`'s `LANGFUSE_INIT_PROJECT_*` pair, i.e. the *instance's* setup
+project) is NOT an acceptable per-project config — it is the same default for every
+project on the machine and violates "each project may have a different set of traces."
+Correct setup per project, done once, and re-verified as still present any time work
+resumes in that project after a gap: (1) create/confirm a dedicated Langfuse project for
+this codebase inside the one global instance, grab its key pair; (2) commit a project-root
+env-loading mechanism (e.g. a checked-in, non-secret-bearing `.envrc`/launch wrapper that
+sources the real keys from the keychain, per the "never `.env` files for secrets, use
+`secret get`" convention in `~/.claude/CLAUDE.md`) that any worktree of this project picks
+up automatically — not a flag hand-typed into one worktree's launch script (the
+`launch-p0-29a.sh` pattern is exactly what NOT to rely on for this: it dies with the
+worktree). Before assuming Langfuse is wired for a returning project, verify: does the
+project-root config exist, and does `PI_BROKER_LANGFUSE=1` plus this project's own
+public/secret key pair actually get exported for every dispatch in this project, not just
+the worktree that happened to set it up.
+
 ---
 
 ## §8 — Local-model task scoping
