@@ -1318,6 +1318,97 @@ length across the specific dispatches involved.
 
 ---
 
+## §9.9 — Local inference server: set a non-zero repetition penalty before dispatching
+
+**RULE 9.9.1 — `mtplx quickstart` (and equivalent local servers) default to
+`frequency_penalty: 0.0` / `presence_penalty: 0.0`. Set both to a non-zero value before any long
+agentic dispatch — but keep it modest for CODE generation, not chat-tuned.** With both at zero,
+nothing in the sampler discourages re-emitting an n-gram that has already appeared in-context —
+once a near-duplicate sentence exists, a moderate temperature (0.6) with narrow top-k (20) will
+often just re-select the now-highest-probability continuation, which is the already-said one.
+`0.3/0.3` stopped the loop (confirmed) but is aggressive for code, which legitimately repeats
+tokens (brackets, indentation, variable/function names) far more than prose — a web-research pass
+(uncited-official-source, treat as a data point not gospel) argued for 0.0 on code specifically,
+which contradicts the direct loop evidence here; **`0.15/0.15`** is the operator's chosen
+middle ground, live-tested 2026-08-14, not yet confirmed to fully suppress loops at that lower
+value — if a loop recurs at 0.15, raise it; if code quality visibly degrades (missing brackets,
+truncated boilerplate), lower it. `--default-frequency-penalty <v> --default-presence-penalty <v>`
+on `mtplx quickstart`. Verify live with:
+```bash
+mtplx settings --port <port> | grep -iE "penalty"
+```
+
+**RULE 9.9.1a — On `mtplx` < 2.5.3, an anonymous/no-API-key client's explicit sampling
+parameters (temperature/top_p/top_k/penalties) may be silently treated as HINTS rather than
+enforced.** Fixed in 2.5.3 ("anonymous API clients now get standard OpenAI semantics for
+explicit request parameters"). Most local dispatch setups run with no API key
+("leave blank for localhost"), which is exactly the affected client type — **upgrade to at
+least 2.5.3, ideally 2.6.0** (`brew upgrade mtplx`; also fixes a Metal buffer-object leak in
+long decodes and a `presence_penalty`/`frequency_penalty` HTTP 500 on `mtp_batch`) before
+trusting that a configured penalty is actually taking effect. Confirm version with
+`mtplx --version`.
+
+**RULE 9.9.2 — A verbatim self-repetition loop (the same sentence generated dozens of times, no
+tool calls, until manually interrupted) is a DIFFERENT symptom from §10.5's frozen-JSON-as-text —
+distinguish them by whether real natural-language prose repeats verbatim (this rule) vs. a
+malformed tool-call payload sits frozen once (§10.5).** Root-cause investigation (2026-08-14,
+Qwen3.8-27B-MTPLX-4bit, local self-forged build) found the loop is typically the confluence of
+two independent things, not one:
+- **A stuck agentic state** — the model re-diagnoses the same unresolved problem across several
+  turns with no successful tool call, each restatement slightly longer, until one generation
+  balloons into hundreds/thousands of tokens of the identical sentence repeated in place.
+- **Zero anti-repetition sampling pressure** (RULE 9.9.1) — nothing stops the degenerate
+  continuation once it starts.
+Neither cause alone fully explains the incident: a stuck state with real repetition penalty set
+usually still produces *varied* (if unproductive) restatements rather than verbatim looping; a
+repetition penalty alone does not prevent the model getting stuck in the first place. Fix the
+sampling gap (9.9.1) as a standing default; if stalls still recur, that is a separate agentic
+harness/tool-availability gap to investigate on its own terms, not a sampling problem.
+
+**RULE 9.9.3 — Don't blame the quantization level for a repetition loop without log evidence.**
+The same incident's raw `tok_s` trend (steady ~44 tok/s at low context down to ~8-11 tok/s by
+~80k prompt tokens — a real, separate ~5x slowdown from KV-quant dequant + prefill cost
+compounding with context) was initially suspected as the loop's cause. It wasn't: the loop fired
+at ~30% of the model's advertised context window, well short of exhaustion, and the raw
+generation log showed no discontinuity in decode speed at the loop boundary. Slowdown and
+looping are separate symptoms with separate root causes on this stack; check the actual
+`mtplx_openai_generation` log events (`tok_s`, `prompt_tokens`, `text_preview` for tool-call
+presence/absence) before attributing either one to the other.
+
+---
+
+## §9.10 — PATTERN (2026-08-14/15, 2 occurrences): a worker tries to `git rm`/`git add -f` + `git rm --cached` an untracked scratch file, believing it deletes the file
+
+Observed twice in one Qwen3.8-27B (mtplx, caveman-compressed output) dispatch, on two different
+self-created scratch spec files (`vpcheck.spec.ts`, then `dbg.spec.ts`). Both times the worker ran
+`git add -f <file>` then `git rm -qf --cached <file>`, checked with `ls | grep <file>`, saw the
+file still present, and did not self-correct — it repeated the identical two-command sequence
+rather than reasoning that `--cached` only unstages, it never touches the working tree. This
+mirrors the operator-observed AppleScript `cd`-omission loop earlier in this session: a worker (or
+operator) re-running the same ineffective command instead of questioning why the check keeps
+failing.
+
+**Root cause**: `git rm --cached` is for removing a *tracked* file from the index while keeping it
+on disk — the exact opposite tool for an *untracked* scratch file the worker wants gone. Applying
+a git-index operation to a file git was never tracking is a category error, not a flag typo, so
+retrying it exactly does nothing new.
+
+**Fix applied**: operator/controller sent the direct correction (`rm -f <path>`) into the Pi
+session both times; worked immediately both times once sent.
+
+**RULE 9.10.1 — a controller watching a worker session should treat "same failing check, same
+command, no self-correction across 2+ attempts" as a nudge trigger, not a wait-and-see.** Don't
+wait for a 3rd occurrence once the pattern is this mechanical (untracked file + git index command
+is deterministically wrong every time, not intermittent) — a one-line direct correction costs
+far less than another full model turn spent re-deriving the same wrong path.
+
+**RULE 9.10.2 — scratch/debug spec files a worker creates for its own diagnosis (not part of the
+card's deliverable) should be removed with plain `rm -f`, never git commands, since they were
+never staged in the first place.** This applies to any worker, not just Qwen — the mistake is
+about git semantics, not model capability.
+
+---
+
 ## §10 — Trace and tracker discipline
 
 **RULE 10.1 — Keep a live tracker, one row per card.** Columns: ID, title, status, **independently
