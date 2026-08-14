@@ -57,6 +57,37 @@ Give the Sonnet judge, verbatim:
 4. Any independent verification already performed — `git diff --stat` of the worktree,
    `git status --porcelain`, test output you ran yourself.
 5. `RULES.md` (this repo) — so it can recognise a new general lesson.
+6. **The worker's own Langfuse trace(s) — mandatory, not optional flavor.** The worker's
+   self-report and final diff are not the only evidence: the judge must also see what actually
+   happened during the dispatch (tool-call sequence, retries, timing anomalies, intermediate
+   reasoning that never made it into the final diff). See §1.3a for how to pull it.
+
+#### 1.3a Pulling the worker's trace
+
+Every model dispatch that goes through Pi Broker (§9.4 roster) is traced to the local
+Langfuse instance (`~/langfuse/`, project `nukegraph-strongcard`) via a litellm proxy at
+`http://127.0.0.1:4020` that all Pi Broker providers route through — this is a config-level
+routing change, not a per-call opt-in, so it covers every dispatch on that harness
+automatically. Read-back uses the same OTLP-mode API as §2.4:
+
+```
+GET http://127.0.0.1:3001/api/public/v2/observations?fromStartTime=<dispatch_start>&toStartTime=<dispatch_end>
+Authorization: HTTP basic pk:sk (same keys as §2.4)
+```
+
+Filter the result to the dispatch window (card start → judge invocation) and, where present,
+by model name. **Known gap, not yet closed**: traces are not currently tagged with the
+worktree path or card ID, so correlation today is by time-window + model, not an exact key.
+If more than one dispatch ran concurrently in the same window, narrow by matching the
+observation's token counts / latency against the worker's own reported numbers, or treat the
+trace evidence as advisory rather than conclusive for that card. Closing this gap (tagging
+every trace with worktree path + card ID at dispatch time) is tracked as follow-up work, not
+assumed done.
+
+If Langfuse is unreachable or no matching trace is found, the judge proceeds on the transcript
+and probe evidence alone but **must say so explicitly** in its output — silently skipping this
+step is not permitted, per RULES §1.7 (never pad output; but also never silently drop a
+mandated evidence source without saying so).
 
 ### 1.4 The judge's mandate
 
