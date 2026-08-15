@@ -1409,6 +1409,35 @@ about git semantics, not model capability.
 
 ---
 
+## §9.11 — PERMANENT RULE: give each parallel dispatch its own local test-server port
+
+Observed 2026-08-15: five cards (P1-05, P1-06, P1-07, P1-09, P1-10) were dispatched in parallel
+against the same merged trunk, each writing its own Playwright test that spins a local uvicorn
+server for real-fetch testing. None of their card specs pinned a port — each worker independently
+picked the same value it saw as precedent (5178, matching the earlier P1-04/canvas-polish-01
+convention). Result: P1-09's test server collided with canvas-polish-01's already-running server
+on the same port, and P1-09 stalled asking the operator to "please free port 5178" — a port it had
+no right to claim in the first place, since another live dispatch owned it.
+
+**Root cause**: the controller (not the workers) failed to allocate disjoint ports across a
+parallel batch. Each worker behaved reasonably given only its own card's context; the collision
+was invisible to any single worker because worktrees are filesystem-isolated but the local network
+port space is not.
+
+**RULE 9.11.1 — before dispatching N cards in parallel that each spin a local dev/test server,
+assign each card a distinct port explicitly in its CARD-*.md** (e.g. "use port 5178+N for your
+local test server, do not use any other port and do not ask the operator to free a port you do not
+own"). Do not leave port choice to convention-following, since parallel workers converge on the
+same precedent independently.
+
+**RULE 9.11.2 — if a worker reports a port conflict and asks the operator to free it, the
+controller must check `lsof -i :<port>` and `ps -p <pid>` BEFORE killing anything** — the process
+may belong to another live, in-progress dispatch, not a stale leftover. Killing it would corrupt
+that other dispatch's run. Redirect the blocked worker to an unused port instead of freeing the
+one it collided on.
+
+---
+
 ## §10 — Trace and tracker discipline
 
 **RULE 10.1 — Keep a live tracker, one row per card.** Columns: ID, title, status, **independently
