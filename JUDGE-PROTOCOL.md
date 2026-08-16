@@ -48,6 +48,20 @@ The heuristic, in priority order:
 Calibration data from the 2026-08 run: real stalls ran to 4.5 hours before anyone acted.
 That is the anti-pattern this trigger exists to kill.
 
+### 1.2a Precondition before dispatch: the coder's worktree must be settled, not mid-run
+
+**Do not dispatch a judge against a worktree the coder is still actively working in — see
+RULES §4.6.** Confirmed 2026-08-16, nukegraph "The Write Path" P1-G: a judge was dispatched
+while the coder was mid-diff-comparison, which had temporarily swapped a file back to its
+original content; the judge read that transient state and reported "diff is empty / no real
+change" — false. Before dispatch, confirm (a) the coder's turn has actually ended, not just
+"looks idle" (§1.2's stall heuristic is a different question — a stalled coder may still be
+holding the worktree in an inconsistent state), and (b) `git status --porcelain` in the
+worktree matches what the coder's own report/transcript claims it left. If either doesn't
+hold, wait and re-check rather than dispatch. This is a controller precondition, not something
+the judge itself can verify in retrospect — by the time the judge is reading, the moving target
+it might have caught is already gone.
+
 ### 1.3 The judge's input packet
 
 Give the Sonnet judge, verbatim:

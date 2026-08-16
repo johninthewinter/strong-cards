@@ -208,6 +208,37 @@ global. we dont want crazy bat shit to happen."*):
 - This applies permanently and globally, not just to the session that prompted it — every
   future orchestrator session inherits this rule the same way it inherits §3.1–§3.7.
 
+**RULE 3.9 — A card's worktree must branch from the integration branch's CURRENT tip, not from
+whatever it was when the previous card started; verify the merge structurally before trusting
+it.** Confirmed twice, 2026-08-16, nukegraph "The Write Path" (P1-F, P1-B): both cards were
+branched from the integration branch before the immediately-prior card had actually merged into
+it. A naive fast-forward or `git checkout`-based merge of either branch would have silently
+**reverted** the prior card's already-merged work — the new branch's history simply didn't
+contain it. Both times this was caught only because the controller happened to use
+`git merge <sha> --no-edit` (a real three-way merge) and manually diffed afterward to confirm
+nothing regressed; nothing forced that discipline, it depended on the controller remembering.
+
+**How to apply.**
+1. Before creating a card's worktree, confirm the integration branch has already absorbed every
+   card this one depends on: `git -C <repo> log --oneline <integration-branch> -1` should show
+   the prior card's merge commit, not an older tip. If it doesn't, wait for that merge first —
+   don't cut the new branch early "to save time."
+2. **Merge with `git merge <branch> --no-edit` (a real three-way merge), never a fast-forward-
+   only or checkout-based merge**, for any card branch going into the integration branch. A
+   fast-forward silently assumes linear history; it does not.
+3. After every card-branch merge, run the structural check script
+   `hooks/sc-premerge-divergence-check.sh <repo> <integration-branch> <card-branch>` — it
+   confirms the card branch's merge-base is the integration branch's tip at branch-creation
+   time (not a stale ancestor) and, on request, dry-runs the merge (`--no-commit --no-ff`) to
+   show which files would change, so a would-be reversion is visible **before** it's committed,
+   not caught after by a lucky manual diff. This is a script the controller runs deliberately
+   before merging — not a blocking PreToolUse hook, because `git merge`/`git checkout` are used
+   for far more than card integration and blocking them generically would be broad enough to
+   break unrelated work (§8.1's minimum-force principle applies to hooks too).
+4. See §14 for the general principle this rule is one instance of: verify the structural fact
+   (what the git graph actually contains) rather than trusting the temporal assumption ("this
+   branch was surely cut after the prior one merged").
+
 ---
 
 ## §3.7 — PERMANENT RULE: the worktree boundary cuts both ways — provision it, don't just isolate it
@@ -391,6 +422,36 @@ doesn't match the diff) rather than only when the diff itself looks wrong. This 
 to failures with an unambiguous diff-level cause (e.g. a clean assertion mismatch) — reading
 the play-by-play adds cost without changing the verdict there; reserve it for cases where *why*
 the worker did what it did is itself the open question.
+
+**RULE 4.6 — Never dispatch a judge against a worktree the coder is still running in.**
+A judge reads whatever is on disk at the moment it looks; if the coder is mid-run, that is a
+**transient intermediate state**, not the coder's final answer, and the judge cannot tell the
+difference. Confirmed 2026-08-16, nukegraph "The Write Path" P1-G: a judge was dispatched into
+a still-live coder worktree while the coder was mid-diff-comparison, which had temporarily
+swapped a file back to its original content; the judge reported "diff is empty / no real
+change" — false. The controller caught it only by manually re-checking the worktree's actual
+final committed state after the coder finished. The judge's other findings (unrelated
+pre-existing test failures) were unaffected and stayed usable — only the finding that depended
+on reading the live tree was wrong.
+
+**How to apply.** Before dispatching a judge (or a breaker, or any agent that reads a worktree
+rather than a frozen transcript), confirm two things, and paste the confirmation in the
+dispatch note, not just in your head:
+1. **The coder's turn has actually ended** — not "looks idle," not "no new tool call in a
+   while" (that is §6's stall heuristic, a different question). If the coder is a Task/Agent
+   dispatch, its result must have returned. If it is a Pi Broker/headless session, its process
+   must have exited or its transcript must show a final report.
+2. **The worktree is settled**: `git -C <worktree> status --porcelain` matches what the coder's
+   own report claims it left (clean if it claims to have committed; only the claimed files
+   dirty otherwise). A worktree mid-diff, mid-write, or with a transient revert-and-reapply in
+   flight will not match its own final report — that mismatch IS the signal to wait, not
+   dispatch.
+
+If either check fails, wait and re-check rather than dispatching — a judge run against a moving
+target produces a finding that reads exactly like a real one and takes independent
+re-verification to unwind. This is a controller-side precondition, not something a hook can
+safely enforce: a hook cannot observe whether the coder's own turn is still open, only worktree
+state at the instant it's asked, which is the same ambiguity this rule exists to close.
 
 ---
 
@@ -693,6 +754,32 @@ is authored at card-writing time (before dispatch, part of freezing the card per
 §1.4) — it is not something the worker invents on its own, since an ambiguous or missing
 scenario is exactly the kind of gap RULE 4.2/5.9 already treats as a card defect, not a worker
 failure. Reviewer checklist in `CARD-TEMPLATE.md` updated to gate on this before dispatch.
+
+**RULE 5.12 — A baseline number in a merge/integration report is a claim; reproduce it with the
+exact same command before it goes in the report, and if it doesn't reconcile, say so instead of
+letting it stand.** Confirmed 2026-08-16, nukegraph "The Write Path": the `five-poc-integration`
+branch's self-reported merge summary claimed a baseline of 874 passing tests before the merge;
+the controller's own independent count of that same baseline was ~792 — a real, unexplained
+discrepancy that was flagged and then just accepted ("move on") without ever being root-caused.
+The FINAL state (885 passed / 2 skipped / 0 failed, all 95 POC-specific tests passing) was
+independently verified and matched exactly, so the end result was trustworthy — but an
+unreconciled number anywhere in a report is a crack RULE 5.4 already exists to close for pass
+counts; it applies just as much to a *baseline* count cited as context.
+
+**How to apply.** Before a merge/integration report's baseline number is accepted:
+1. Run the exact count command yourself, against the exact baseline ref the report claims, and
+   paste your own number next to the report's.
+2. If they match, note the match. If they don't, the report is not done — either find the
+   command/ref difference that explains it (different test selection, different working tree
+   state, a flake) and say so explicitly, or record it as an **open, unroot-caused discrepancy**
+   in the tracker (§10.1) with the two numbers, the commands used for each, and no invented
+   explanation. "The final number matched" does not retroactively justify skipping this — the
+   final number is a separate claim from the baseline number, and this run is exactly the case
+   where treating them as interchangeable would have hidden a real problem if the final count
+   had NOT independently matched.
+3. Do not let "the user said move on" substitute for the record above — moving on is a valid
+   operator call under time pressure; skipping the record of *why* is not the same thing, and is
+   what makes the discrepancy unfindable next time someone hits it.
 
 ---
 
@@ -1723,3 +1810,47 @@ Do not conflate with §11 (process death, not hang) or the §6 Why-box's R6/R7 l
 model-server hangs (those ran hours on much larger cards; this is a 3-file card well within
 §8.1's local-model budget, stalling at under an hour — track separately in case the size
 correlation observed in R6/R7 does not hold here).
+
+---
+
+## §14 — PERMANENT RULE: an automated gate must key on evidence the claimed event actually
+happened, never on a proxy that merely resembles it
+
+**RULE 14.1 — Pattern-matching output TEXT for a failure shape is not the same as confirming a
+test actually ran, and a gate that conflates the two will fire on unrelated commands.**
+Confirmed twice, 2026-08-16, nukegraph "The Write Path": the global first-fail lock hook
+(`~/.claude/hooks/sc-firstfail-guard.sh`, mirrored from this repo's
+`hooks/sc-firstfail-guard.sh`) has a fallback path — `sc_ff_has_pytest_summary()` — that sets
+the hard lock whenever ANY Bash command's output contains text shaped like a pytest summary
+line ("N failed", "N passed"), regardless of what command produced it. Both occurrences were
+routine, read-only investigation (`ls`/`cat`/`tail` on an old audit-log JSON file), not a test
+run; the lock fired anyway because the file's own contents happened to contain failure-shaped
+substrings. **This exact bug reproduced live while researching this rule**: reading this repo's
+own hook source (which quotes example strings like `"3 failed, 490 passed"` in a comment) via
+`cat`/`tail` tripped the same lock on an unrelated worktree. No test-tool invocation occurred
+in any of these cases; the hook cannot currently tell the difference between "a test failed"
+and "some text that looks like a test failed."
+
+**How to apply — fixed structurally, not just documented.** `hooks/sc-firstfail-lib.sh` gained
+`sc_ff_is_readonly_inspection_command()`, which recognizes commands whose own first word (after
+env-var assignments) is a pure read/inspection tool — `ls`, `cat`, `head`, `tail`, `less`,
+`more`, `grep`/`egrep`/`fgrep`/`rg`, `find`, `wc`, `file`, `stat`, `pwd`, `echo`, `printf`,
+`jq`, `git log`/`show`/`diff`/`status`/`blame` — and cannot itself have executed a test suite
+regardless of what text its output contains. `hooks/sc-firstfail-guard.sh`'s gate now skips the
+`sc_ff_has_pytest_summary()` fallback entirely for such commands, closing this exact
+false-positive class while leaving the fallback's original purpose intact (catching a real test
+run launched through a wrapper script the `pytest`/`python -m pytest` regex doesn't match). The
+same fix is mirrored into the live global hooks at `~/.claude/hooks/`.
+
+**RULE 14.2 — The general principle §3.9 and §14.1 are both instances of: verify the structural
+or causal fact directly; never infer it from a proxy that merely looks the part.** §3.9's
+pre-merge check exists because "this branch was surely cut after the prior one merged" is a
+*temporal* assumption standing in for a *structural* fact (what the git graph actually
+contains) — and the assumption failed twice while the structural fact, checked directly, would
+have caught it every time. §14.1's hook gate exists because "this output text is shaped like a
+failure" was standing in for "a test tool actually ran and failed" — a *textual* proxy for a
+*causal* fact. Any future automated gate in this system — a hook, a lock, a check script —
+should be built by asking "what is the actual event I need evidence of, and does my signal
+prove that event happened, or only that something resembling it appeared?" A signal that only
+resembles the event will eventually fire on something that isn't the event; this run produced
+two independent, unrelated examples of exactly that in one session.
