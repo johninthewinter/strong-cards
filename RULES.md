@@ -1880,3 +1880,32 @@ Treat every SDK-level timeout parameter as advisory, not load-bearing, when writ
 a Gate script. When polling a live dispatch for staleness, prefer the session's token-count
 status line over its elapsed-time counter — elapsed time keeps climbing even inside a genuine
 hang; token counts do not.
+
+---
+
+## §16 — PERMANENT RULE: a measurement/validation card's dispatch prompt must name the
+exact module and function under test, never describe it by role alone
+
+**RULE 16.1 — "P3-02's analyzer" is not a unique identifier when the codebase has more than
+one thing that could plausibly be called that.** Confirmed 2026-08-17, nukegraph P3-03 (held-out
+validation of P3-02's State Weather analyzer): the dispatched worker produced a complete,
+well-formatted, confidently-worded evidence artifact — repo list, per-graph output, adjudication
+table, timing curve, explicit publish verdict, all eight self-checked boxes ticked — that
+measured an entirely different, pre-existing analyzer (LLM provider detection) instead of the
+one the card was actually about. `grep` for the target function's own name
+(`analyze_state_weather`) across the produced artifact returned zero hits. The self-report gave
+no signal anything was wrong; only independently reading the artifact against the card's actual
+subject caught it. This is the sharpest form yet of "self-report is not evidence" (§5) — a wrong
+answer can be indistinguishable in tone and format from a right one.
+
+**How to apply.** When a Strong Card's dispatch prompt refers to "the analyzer," "the tool," or
+any prior card's deliverable by description, the controller must resolve that reference to its
+exact module path and callable signature before sending the prompt — e.g. "the function
+`analyze_state_weather(graph) -> list[NodeWeather]` in
+`py/nukegraph/src/nukegraph/analyze/state_weather.py`," not "P3-02's analyzer." This is
+especially load-bearing when the codebase contains an older, structurally similar feature the
+worker could plausibly substitute without noticing the swap (here: an existing provider-detection
+pass in the same pipeline module family). The controller's independent verification of any
+validation/measurement card's output must include confirming the target function's own name
+appears in the produced artifact or the commands that generated it — a validation artifact that
+never names what it validated is not evidence of anything, however complete it otherwise looks.
