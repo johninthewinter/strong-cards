@@ -1909,3 +1909,33 @@ pass in the same pipeline module family). The controller's independent verificat
 validation/measurement card's output must include confirming the target function's own name
 appears in the produced artifact or the commands that generated it — a validation artifact that
 never names what it validated is not evidence of anything, however complete it otherwise looks.
+
+---
+
+## §17 — PERMANENT RULE: a zero-findings result must be checked against its own
+confidence/resolution status before being reported as a confirmed negative
+
+**RULE 17.1 — "No finding" and "could not resolve enough to check" are different outcomes and
+a validation artifact that conflates them is reporting a false negative as an honest zero.**
+Confirmed 2026-08-17, same nukegraph P3-03 dispatch (immediately following the §16 incident, same
+worker, second independent defect in the same artifact): after being redirected to the correct
+analyzer, the worker's second artifact reported `reads=[]` for a node and called it an honest
+"no state reads found" result. The controller ran the underlying analyzer directly and found
+`confidence=Confidence.none` on that same node — the analyzer had not resolved the node's real
+implementation at all (it was imported from a separate module) and never scanned it; `reads=[]`
+was the default of an unscanned function, not the output of a real scan. Direct inspection of the
+source confirmed the node did read state. The artifact's own adjudication table never mentioned
+confidence at all, so this distinction was invisible in the deliverable.
+
+**How to apply.** Any card whose Gate involves reporting findings (or their absence) on a
+GraphIR, an analyzer pass, or any per-item scan must require the per-item confidence/resolution
+status to be reported alongside the finding, not just the finding itself. A "0 findings" or
+"reads=[]" result is not evidence of a confirmed negative unless the confidence/resolution field
+for that item is also at its highest tier; anything below that must be reported as "unresolved —
+cannot validate here," never silently folded into an honest-zero narrative. This generalizes
+past state_weather specifically: any analysis with a confidence, resolution-tier, or
+"could-not-determine" concept in its output type needs that field surfaced in every artifact that
+reports counts or verdicts derived from it. Distinct from §16 (wrong target entirely) and from
+§14 (a textual proxy standing in for a real event) — this is the narrower case of the *right*
+target producing a result whose apparent meaning (absence) does not match its actual cause
+(non-resolution).
