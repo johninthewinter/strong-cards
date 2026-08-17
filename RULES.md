@@ -1854,3 +1854,29 @@ should be built by asking "what is the actual event I need evidence of, and does
 prove that event happened, or only that something resembling it appeared?" A signal that only
 resembles the event will eventually fire on something that isn't the event; this run produced
 two independent, unrelated examples of exactly that in one session.
+
+---
+
+## §15 — PERMANENT RULE: a network-probing verification script needs its own OS-level
+timeout, never just the SDK's stated one
+
+**RULE 15.1 — An SDK-reported `timeout=N` parameter is not proof the call returns within N.**
+Confirmed 2026-08-17, nukegraph P2-17 (LangSmith tracer): a real-network verification script
+inside a card's own Gate step called `client.flush(timeout=10)` against the LangSmith SDK. The
+call hung for 23+ minutes before being interrupted — the SDK's `timeout` kwarg did not bound
+the actual wall-clock time, most likely because retry/backoff logic or a connection-level stall
+sits outside what that parameter governs. The dispatch window showed a live spinner and a
+climbing "Elapsed Ns" counter the entire time, so it read as "slow but working," not "stuck" —
+until the token-count status line (`↑`/`↓`) was checked across three consecutive 5-minute polls
+and found byte-identical, which was the actual proof of a stall (see §6's "diagnose before
+killing" — token-count stasis was the diagnostic signal here, not the elapsed timer, which is
+misleading on its own since it climbs even mid-retry-loop).
+
+**How to apply.** Any verification script a Strong Card runs that makes a real network call
+(SDK ingestion calls, health checks, flush/drain calls) must be wrapped in its own hard,
+process-level timeout — `subprocess.run(..., timeout=N)`, `signal.alarm(N)`, or equivalent —
+independent of and shorter than whatever the SDK's own `timeout=` parameter claims to enforce.
+Treat every SDK-level timeout parameter as advisory, not load-bearing, when writing or reviewing
+a Gate script. When polling a live dispatch for staleness, prefer the session's token-count
+status line over its elapsed-time counter — elapsed time keeps climbing even inside a genuine
+hang; token counts do not.
