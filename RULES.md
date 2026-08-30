@@ -282,6 +282,25 @@ that might still be running commands against it. This costs one extra `git workt
 alternative risk (corrupting or confusing a live session's working directory) is categorically
 worse.
 
+**RULE 3.9c — when the target worktree for a dispatch already exists, do NOT pass an
+isolation flag that creates a new one.** Confirmed 2026-08-30, nukegraph P6-04: the
+controller dispatched a coding agent with `isolation: "worktree"` while ALSO pointing it
+at a pre-created worktree path (`p6-04-provider-visibility`, already `git worktree add`-ed
+and seeded with CARD.md). `isolation: "worktree"` creates its OWN fresh worktree cut from
+an old base commit and pins the agent to it — the agent could `Read` the intended path but
+every `Bash`/`git` call was refused as targeting the wrong tree, `EnterWorktree` toward the
+intended path reported success but left commands broken, and `ExitWorktree` itself refused
+to run from inside a pinned subagent. The dispatch reported honestly (no fabricated
+results) and cost one full redispatch cycle.
+
+**How to apply.** Two dispatch shapes, don't conflate them: (1) the worktree does not yet
+exist — pass `isolation: "worktree"` (or have the dispatched agent `git worktree add` it
+itself) and let the tool create it; (2) the worktree was already created by the controller
+(the common case when a frozen CARD.md is seeded into it before dispatch, as this session's
+own pattern does) — dispatch WITHOUT an isolation flag, and instruct the agent to `cd`/`-C`
+into the existing path for every command. Passing both "isolation" and "a pre-existing
+target path" at once is the bug; pick one.
+
 ---
 
 ## §3.7 — PERMANENT RULE: the worktree boundary cuts both ways — provision it, don't just isolate it
