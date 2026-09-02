@@ -4,7 +4,7 @@
 |---|---|
 | **Run ID** | `2026-08-nukegraph-r1-r20` |
 | **Window** | 2026-08-09 → 2026-08-11 |
-| **Project** | `/Users/misterj/src/nukegraph_langgraph` (LangGraph node studio) |
+| **Project** | `~/src/nukegraph_langgraph` (LangGraph node studio) |
 | **Source plan** | `docs/reviews/final-gate-2026-08-09/remediation-plan.md` (from a 4-way adversarial final-gate audit) |
 | **Tracker** | `.audit-scratch/REMEDIATION-QUEUE-STATUS.md` |
 | **Cards** | `.audit-scratch/cards/R*.md` |

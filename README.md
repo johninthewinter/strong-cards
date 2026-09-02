@@ -1,5 +1,7 @@
 # strong-cards
 
+![Strong Cards — if you judge a fish by its ability to climb a tree, it will live its whole life believing that it is stupid. Make no mistake: let the fish swim.](docs/strong-cards-poster.png)
+
 The durable, versioned, global home for the **Strong Card** methodology: how a bounded
 unit of work is specified, dispatched to a coding model, independently verified, judged
 on failure, and merged.
@@ -42,6 +44,6 @@ real incident or a real observation in `runs/` — nothing is invented for compl
 ## Scope note
 
 This repo governs *methodology*. Model routing, local-server recipes, and machine-specific
-setup stay in `~/.claude/CLAUDE.md` and `~/src/strong-cards/` (the older experiments and
-proof repo). The one routing rule restated here is the hard one: never call
-`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` directly (RULES §9).
+setup stay in `~/.claude/CLAUDE.md` and the earlier experiments/proof archive. The one
+routing rule restated here is the hard one: never call `ANTHROPIC_API_KEY` /
+`OPENAI_API_KEY` directly (RULES §9).

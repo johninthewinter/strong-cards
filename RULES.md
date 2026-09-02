@@ -1648,7 +1648,7 @@ time.
 **RULE 10.1 — Keep a live tracker, one row per card.** Columns: ID, title, status, **independently
 verified (yes/no + the evidence)**, notes. It is the run's memory and the retrospective judge's
 primary input. Reference shape:
-`/Users/misterj/src/nukegraph_langgraph/.audit-scratch/REMEDIATION-QUEUE-STATUS.md`.
+`~/src/nukegraph_langgraph/.audit-scratch/REMEDIATION-QUEUE-STATUS.md`.
 
 **RULE 10.2 — Any output that grades, reviews, or audits is a git-tracked deliverable.**
 Saved under `docs/reviews/<run_id>/` with raw envelopes, prompts, and synthesis; digest-pinned;
