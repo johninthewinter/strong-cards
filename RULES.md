@@ -1885,6 +1885,29 @@ implicit worker permission to widen scope.
 > that rule triages a full-suite failure discovered after the fact; this rule prevents the
 > self-contradiction from ever reaching dispatch.
 
+**RULE 12.9 — A card that changes an existing API's request/response shape MUST carry an
+explicit no-regression gate; a low-effort/reasoning-off worker will not infer backward
+compatibility on its own.** If a card adds/removes/retypes a field, changes a status code, or
+changes what an already-called API returns, the card's acceptance criteria must state one of:
+(a) the full pre-existing test suite relevant to that API passes **unmodified**, or (b) if some
+pre-existing tests are expected to need updates, the card names **exactly which ones** and states
+why the change is intentional — not a byproduct the worker discovered and patched around. Do not
+rely on an implicit "obviously stay compatible" reading; state it as a gate or it does not bind.
+
+> **Why.** 2026-09-02/03, The Composer (`The_Composer`), Strong Card H-01: the card described
+> threading a new `baseRevision` field through the undo/redo request for a staleness check, with
+> no explicit backward-compatibility gate. Dispatched to GPT-5.6 Luna (reasoning off), the
+> first-attempt implementation made `baseRevision` hard-required with no default — the literal,
+> minimum-effort reading of "add a field" — which broke all 41 pre-existing tests with 422
+> validation errors. A judge pass caught it; the fix (`f1fdf9c`, "make baseRevision optional and
+> entry-scoped, not project-wide") corrected it. Real bug, real break, real fix, all in that
+> repo's `git log` — not hypothetical. The general lesson: a low-effort model executes the
+> literal Scope/Gate text, not the intent behind it; an implicit expectation that matters for
+> correctness must be written down as a gate or a low-effort dispatch will not honor it. See also
+> RULE 12.8 (scope-fence dependency sweep) — that rule catches a Fix that breaks a *fenced*
+> test's *reliance* on changed behavior; this rule catches the narrower, easy-to-miss case of an
+> API *contract* change with no fenced test naming it at all, only "existing callers."
+
 ---
 
 ## §13 — OPEN WATCH-ITEM: the plan-then-silence stall on Qwen3.6-27B-Fable-Fusion (2 occurrences)
