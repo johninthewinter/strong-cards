@@ -2080,3 +2080,28 @@ reports counts or verdicts derived from it. Distinct from §16 (wrong target ent
 §14 (a textual proxy standing in for a real event) — this is the narrower case of the *right*
 target producing a result whose apparent meaning (absence) does not match its actual cause
 (non-resolution).
+
+## §18 — PERMANENT RULE: a UI-touching card is not done on green tests alone — it needs a visual-verification gate
+
+**What happened.** The Composer had 112 real Playwright E2E specs asserting DOM state (element
+counts, positions, text, ARIA) against a real spawned backend — genuine coverage, not stubs — and
+zero verification that any shipped UI feature actually rendered correctly to look at. DOM
+assertions can pass while a feature is visually broken: overlapping elements, an off-screen
+control, truncated text, dark-mode token drift, a stuttering animation. Only 14 one-off manually
+captured screenshots existed project-wide, used as human-readable "proof" for specific cards —
+not systematic, not re-checked, not gated on anything.
+
+**How to apply.** Any Strong Card whose Touch List includes UI/frontend files must freeze a
+**Visual Contract** as part of its spec: a fixed, bounded matrix of screenshots/short clips
+(states × viewports × themes actually relevant to that card's own Touch List — never a blanket
+regression suite) captured against the real spawned backend, then graded by a vision-capable
+model (or the card owner live, when watching) against a concrete checklist: layout containment,
+element overlap, off-screen/clipped controls, contrast/theme-token drift, text truncation,
+animation-frame stutter. This produces a structured PASS/FAIL/NO_FIT verdict that slots in as a
+gate parallel to BREAK, gated by FIT (§5) — a card cannot be called done on green
+Playwright/pytest alone if its Touch List touches UI. This is explicitly NOT full pixel-diff
+visual regression (too brittle for any UI that reflows/resizes) — it is a bounded, checklist-based
+human-or-model look at what actually shipped. Store the captured evidence and verdict under the
+existing `docs/reviews/<run_id>/` audit-trace convention (§10) — never job-tmp/scratch. Full
+design reference: `docs/plan/strong-cards/reference/ui-visual-verification-gate.md` in whichever
+project repo adopted this rule first (The Composer, 2026-09-05).
