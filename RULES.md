@@ -2105,3 +2105,37 @@ human-or-model look at what actually shipped. Store the captured evidence and ve
 existing `docs/reviews/<run_id>/` audit-trace convention (§10) — never job-tmp/scratch. Full
 design reference: `docs/plan/strong-cards/reference/ui-visual-verification-gate.md` in whichever
 project repo adopted this rule first (The Composer, 2026-09-05).
+
+## §19 — PERMANENT RULE: concurrent dispatches never share one worktree — one worktree per in-flight agent, no exceptions
+
+**What happened.** Two GPT-6 Astra remediation passes were dispatched in parallel to fix
+different, non-overlapping sub-issues in the same tutorial Strong Card batch (TUT-02/03 vs.
+TUT-05/06). Both were pointed at the SAME worktree (`tutorial-content-draft`) because their
+target files — one shared HTML card doc plus `docs/plan/features.json` — lived together in one
+place and splitting them felt like unnecessary ceremony. The HTML file merged fine (it uses
+distinct, non-overlapping sections per card, so both agents' edits happened to compose). But
+`docs/plan/features.json` is one shared JSON array with no per-entry file boundary: both agents
+read it, each appended their own subset of new entries, and whichever agent's write landed second
+silently overwrote the other's version of the whole file. Result: 9 of 11 new cards lost their
+tracked entry entirely, with no error, no conflict marker, nothing — it only surfaced because an
+independent adversarial re-review happened to diff that specific file. §3.4/§2.2 ("every dispatch
+runs in its own worktree, never the primary tree") was technically honored — there WAS a
+dedicated worktree, off the primary tree — but the rule's actual intent (no two independent
+writers can silently clobber each other) was violated because that one worktree was shared
+BETWEEN two concurrent dispatches rather than reserved for one.
+
+**How to apply.** "Own worktree" means one worktree per concurrently-running dispatch, full stop
+— never "one worktree per card family" or "one worktree because the changes are related." If two
+agents are running at the same time, they get two worktrees, even when their target files
+overlap or sit in the same directory, even when the task feels too small to justify it, even when
+splitting the shared tracker file (`features.json`, a changelog, an index) between them seems
+awkward. If a genuinely shared tracker file must be touched by both, either (a) serialize those
+two specific writes (dispatch B only starts after A's worktree is merged), or (b) dispatch both
+in parallel but have each write to a scratch file of its OWN new entries only, then merge the
+scratch files into the tracker by hand (or via a third, later step) after both return — never let
+two concurrent agents `read-modify-write` the same shared file. This generalizes beyond
+`features.json`: any shared, whole-file-rewritten tracker (not a git-mergeable per-section
+document) is a silent-clobber risk under concurrent dispatch, and the fix is either worktree
+separation with serialized merge, or a scratch-then-reconcile pattern — never "share the
+worktree because it's convenient." Confirmed 2026-09-05 on The Composer's TUT-02..10 tutorial
+batch remediation.
