@@ -2139,3 +2139,31 @@ document) is a silent-clobber risk under concurrent dispatch, and the fix is eit
 separation with serialized merge, or a scratch-then-reconcile pattern — never "share the
 worktree because it's convenient." Confirmed 2026-09-05 on The Composer's TUT-02..10 tutorial
 batch remediation.
+
+## §20 — PERMANENT RULE: code comments must read like a staff engineer wrote them, never like an LLM narrating its own output
+
+**What happened.** Dispatched coders (frontier models included) default to a verbose,
+self-explanatory comment style when left unconstrained: multi-line prose blocks that restate what
+the code already says, hedge with "this ensures that...", narrate the current task ("fixed for
+ER04-10", "added to handle the case from issue X"), or read as a generated explainer rather than a
+engineer's terse note-to-self. This is real technical debt even when the underlying code is
+correct — future maintainers (human or model) have to wade through paragraph-shaped noise to find
+the one line that actually carries a non-obvious fact, and task-referencing comments rot the
+moment the card's context is gone.
+
+**How to apply.** Every dispatch prompt that authors or edits code must explicitly require: (a)
+comments only where the WHY is non-obvious — a hidden constraint, a subtle invariant, a
+workaround for a specific bug, a decision that would surprise a reader; never comments that
+restate WHAT the code does, since well-named identifiers already carry that; (b) no reference to
+the current task, ticket, card name, or fix ("used by X", "added for the Y flow", "fixed per
+ER04-10") — that belongs in the commit message and card record, not in code that outlives the
+card; (c) terse, senior-engineer register — a comment should read like a real staff engineer's
+note left for the next maintainer, not an LLM's self-narrating explanation of its own reasoning;
+no hedging filler, no "this is important because", no multi-paragraph docstrings for a
+three-line function; (d) a controller-side spot-check before accepting a card: open the actual
+diff and read the comments as prose — if they sound like an AI explaining itself rather than an
+engineer leaving a load-bearing note, that is a real review finding, not a style nitpick, and the
+card is not FIT until fixed. This generalizes the terse-code-comment feedback already recorded
+per-project (see `feedback_terse_senior_code_comments` in project memory) into permanent,
+cross-project doctrine — every dispatch prompt going forward should carry this constraint
+explicitly, not rely on the coder inferring it.
