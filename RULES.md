@@ -6,6 +6,12 @@ below states its **Why** from a real observed incident. Nothing here is speculat
 
 Evidence base: `runs/2026-08-nukegraph-r1-r20/RETROSPECTIVE.md`.
 
+**Paired-policy activation notice.** The construction amendments associated with
+`SC-POLICY-CONSTRUCTION-2026-09-08` are a committed candidate until the Builder
+`docs/process-adoption.json` manifest is `active` and binds this exact WIP revision, the exact
+Builder revision, both policy-patch hashes and two independent PASS receipts. Until that guard
+passes, no new draft may claim the candidate protocol as active.
+
 ---
 
 ## §1 — The Grandmaster Doctrine (philosophical base)

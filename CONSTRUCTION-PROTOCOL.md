@@ -1,6 +1,6 @@
 # Strong Card construction protocol
 
-Status: owner-authorized operating policy adopted with the Builder on 2026-09-08. The evidence and full schemas are retained in the Builder review `docs/reviews/strong-card-construction-astra-high.json`. This file is the durable methodology contract; runtime automation remains a separately qualified Builder capability.
+Status: owner-authorized paired-policy candidate. It governs new drafts only when the Builder `docs/process-adoption.json` manifest is `active` and binds this exact WIP revision, the exact Builder revision, both patch hashes and two independent PASS receipts. The evidence and full schemas are retained in the Builder review `docs/reviews/strong-card-construction-astra-high.json`. Runtime automation remains a separately qualified Builder capability.
 
 ## Purpose
 
@@ -89,3 +89,5 @@ SC-BLD-R03 r1 through r5 remain immutable rejected evidence. There is no r6.
 - **R03B** consumes accepted R03A inside `Controller.finish()`. It owns disposition behavior, proposed lesson evidence, five-table atomicity, replay/collision/stale/role/new-content/frozen-seal guards, successor enqueue and R01/R02 preservation.
 
 R03B is not drafted against a hypothetical R03A. The parent remains incomplete until both children receive their own BREAK pair, freeze, implementation, controller acceptance and integration.
+
+The split also conserves three separate obligations without silently assigning them to either child: raw malformed persisted JSON at the caller boundary, authenticated receipt-producer identity, and policy activation. Each remains an explicit future Strong Card or owner-policy obligation. Neither R03A nor R03B may claim to implement it.

@@ -11,6 +11,10 @@ should eventually shrink to a pointer here rather than duplicating the text — 
 one copy. Until that cut is made, `RULES.md` §1 holds the doctrine verbatim so the two
 never silently diverge.
 
+Paired policy candidates are active only when the Builder adoption manifest binds the exact
+Builder/WIP revisions and review receipts. A commit in this repository alone does not bypass
+that activation guard.
+
 ## Why a repo and not a memory note
 
 Two rules in `RULES.md` are permanent and were written in blood on 2026-08-10: a dispatched
