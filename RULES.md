@@ -2167,3 +2167,9 @@ card is not FIT until fixed. This generalizes the terse-code-comment feedback al
 per-project (see `feedback_terse_senior_code_comments` in project memory) into permanent,
 cross-project doctrine — every dispatch prompt going forward should carry this constraint
 explicitly, not rely on the coder inferring it.
+
+## §21 — PERMANENT RULE: every frozen gate has an executable fixture-and-command preflight
+
+**What happened.** The Composer LC-02b card was frozen after two BREAK reviews, but it joined two independently risky deliverables: the chain-strip overlay and a five-consumer sibling-row allocator. Its browser spec covered one chain-bearing node while Gate 5 required a >=50-node tangled fixture, simultaneous lesson/run-status/output-preview/X-Ray/strip rows, stable-paint timing, overflow and composite cases. The frozen card named those outcomes but no pre-dispatch proof established that the required fixture, setup seam, and exact test command existed together. A Luna attempt could add only partial assertions; a Terra judge proved the card had to split before a valid retry.
+
+**How to apply.** Before freezing any card, the controller must create a gate ledger. For every acceptance gate, record: the exact fixture or setup mechanism, one executable command from a fresh provisioned worktree, the specific observable assertion, and the Touch-List file that will contain the proof. Run the command once in that fresh worktree before declaring the card dispatchable. If two gates need different risky fixtures, seams, or consumer sets that cannot be proven by the same bounded test surface, split the card before freeze. A prose gate without an executable fixture-command-assertion mapping is a DRAFT requirement, not a frozen acceptance gate. A failed mapping is a card defect: judge it, update the card, and re-dispatch only against the corrected card.
