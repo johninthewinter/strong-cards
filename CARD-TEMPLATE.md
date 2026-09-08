@@ -12,10 +12,30 @@ single most common judge finding (RULES §4.2).
 **Freeze the card before dispatching** (doctrine §1.4). Edits after dispatch are a new
 attempt, not the same attempt.
 
+## Construction packet required before drafting
+
+Run `CONSTRUCTION-PROTOCOL.md` PB0-PB10 before BREAK. The controller supplies the packet and
+all authoritative receipts; the drafter never receives the accumulated chat/run archive by
+default. An uncovered obligation, untraced effect, missing predicate mutant, unresolved
+contradiction or over-budget mandatory packet blocks drafting or forces a split.
+
 ---
 
 ```markdown
 # <ID> — <one-line imperative title>
+
+## Construction packet
+- Packet ID / revision / SHA-256: `<...>`
+- Baseline / policy manifest / owner scope: `<...>`
+- Bounded source and fact IDs: `<...>`
+- Requirement IDs, including inherited invariants and scope fences: `<...>`
+- Read / write / predicate / rollback / preservation ledger IDs: `<...>`
+- Contradictions and omissions: `<none, or exact IDs and dispositions>`
+- Exact evidence-output allowlist: `<...>`
+- PB0-PB10 receipt IDs: `<...>`
+
+The controller generated model/effort/harness, worktree, command, timing, hash and result
+metadata. Model-authored copies are not authoritative.
 
 ## Source
 Where this card comes from: plan document + section, audit finding, or parent card it was
@@ -239,6 +259,11 @@ fix, do not widen scope to make something pass, do not delete a failing test.
 
 ## Reviewer checklist before dispatch
 
+- [ ] PB0-PB10 passed against the final packet/card/gate digests; the review seal is not a coding freeze.
+- [ ] Every parent/new/inherited obligation resolves through read/write/predicate/rollback/preservation ledgers to named tests and proof receipts.
+- [ ] Every critical predicate has a one-change invalid fixture, restored control and implementation mutant that fails its intended assertion.
+- [ ] Whole-effect rejection snapshots, success allowed-delta checks, retry and unrelated sentinels cover every consequential branch and inherited guard.
+- [ ] Packet is within the 16k target / 24k hard cap; omissions and unavailable telemetry are explicit; no whole transcript/archive was pasted by default.
 - [ ] Every `Defect` claim quotes real current code at a real current line.
 - [ ] Touch List ≤ 3 files (local model) — if more, split first (RULES §8.4).
 - [ ] Every other card's mechanism that lives in these same files is named in `Do NOT touch`.

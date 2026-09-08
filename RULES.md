@@ -71,9 +71,12 @@ git worktree add ../.wt/card-<slug> -b card/<slug>
 The worker gets **only** that path. Nothing shared with the main working tree.
 
 **RULE 3.2 — The worker never receives the main repo path.**
-`opencode run --dir <worktree-path>` — never `--dir <repo-root>`. Same for any other harness:
-the tool's working-directory argument is the sandbox boundary. If the harness has no such
-argument, it is not an acceptable dispatch harness.
+`opencode run --dir <worktree-path>` — never `--dir <repo-root>`. The directory pin isolates
+the change set and makes the diff reviewable; it is not a host-security sandbox. A qualified
+dispatch also needs the harness plus OS/container capability boundary: protected controller,
+policy and evidence stores, a scrubbed environment, path/symlink enforcement, no-delete rules
+and network denial or a specifically qualified exception. If the harness cannot pin its
+working directory and enforce the required capabilities, it is not an acceptable route.
 
 **RULE 3.3 — Inspect the diff before merging, over the WHOLE tree.**
 ```bash
@@ -456,9 +459,11 @@ when the transcript evidence positively fails to support a card defect (see §8)
 "Scope is too big" is not an output. "Split into six single-file cards R3a–R3f, here they are"
 is.
 
-**RULE 4.4 — The judge also updates the global rules when the failure teaches something new.**
-See `JUDGE-PROTOCOL.md` §1.5. A failure that reveals a reusable lesson updates `RULES.md`
-and/or `hooks/` in this repo — fixing one card is half the job.
+**RULE 4.4 — The judge proposes a global rule change when the failure teaches something new.**
+See `JUDGE-PROTOCOL.md` §1.5. The judge records the reproducer, affected rule and exact patch;
+it cannot activate or commit policy. The owner authorizes a paired Builder/WIP adoption
+manifest with rollback before the current run inherits the rule. Fixing one card without
+retaining the reusable lesson is incomplete; self-adopting a judge proposal is forbidden.
 
 > **Why.** R3's first attempt read 2,236 lines across 7 files and made zero edits. A judge
 > diagnosed scope-too-large; the split into R3a–R3f then closed all six cleanly. R6's judge
@@ -2174,11 +2179,13 @@ explicitly, not rely on the coder inferring it.
 
 **How to apply.** Before freezing any card, the controller must create a gate ledger. For every acceptance gate, record: the exact fixture or setup mechanism, one executable command from a fresh provisioned worktree, the specific observable assertion, and the Touch-List file that will contain the proof. Run the command once in that fresh worktree before declaring the card dispatchable. If two gates need different risky fixtures, seams, or consumer sets that cannot be proven by the same bounded test surface, split the card before freeze. A prose gate without an executable fixture-command-assertion mapping is a DRAFT requirement, not a frozen acceptance gate. A failed mapping is a card defect: judge it, update the card, and re-dispatch only against the corrected card.
 
+The ledger is compiled before BREAK under `CONSTRUCTION-PROTOCOL.md` PB0-PB10. Every new and inherited obligation maps to reads, writes, predicates, rollback/frame branches, named tests and controller receipts. Every critical predicate has a one-change invalid fixture, restoration and implementation mutant that must fail its named assertion. Setup/import failures are invalid probes. A table-name list or aggregate count is not proof of complete semantic coverage.
+
 ## §22 — PERMANENT RULE: independent adversarial boundaries are a split signal even when they live in one file
 
 **What happened.** Composer H-03a looked small by Touch List (one new preview module, one export file, one route, one test), but repeated proof-backed re-BREAK passes exposed independent security systems hidden inside that file: temporary-root creation, descriptor/path traversal, Git-tree extraction, live-source revision reads, child-process lifecycle, error containment, and source-derived response suppression. A narrow file count did not make it a narrow card. Each remediation made the card longer while leaving another untested adversarial boundary, which is the same throughput and acceptance failure as an oversized multi-file card.
 
-**How to apply.** Before freezing, enumerate the card's independent adversarial boundaries, not just files: filesystem confinement, archive/tree extraction, subprocess lifecycle, authorization/staleness, secret/redaction egress, and equivalent categories. A card that contains more than two such boundaries must either (a) split into an infrastructure/security-kernel card and a separately frozen feature/route card, or (b) carry a proof-backed written justification that the boundaries share one minimal mechanism and one bounded fixture surface. If a second re-BREAK cycle discovers a previously unenumerated adversarial boundary, stop adding requirements to the same card: mark it DRAFT, run a Sol-medium re-grounding/split pass, and obtain two fresh independent BREAK reports for each resulting card. The ledger must include one deliberate attack fixture for every enumerated boundary. File count, token count, and a green prose review never override this rule.
+**How to apply.** Before freezing, enumerate the card's independent adversarial boundaries, not just files: filesystem confinement, archive/tree extraction, subprocess lifecycle, authorization/staleness, secret/redaction egress, and equivalent categories. A card that contains more than two such boundaries must either (a) split into an infrastructure/security-kernel card and a separately frozen feature/route card, or (b) carry a proof-backed written justification that the boundaries share one minimal mechanism and one bounded fixture surface. If a second re-BREAK cycle discovers a previously unenumerated adversarial boundary, stop adding requirements to the same card: mark it DRAFT, run a Sol-medium re-grounding/split pass, and obtain two fresh independent BREAK reports for each resulting card. The ledger must include one deliberate attack fixture for every enumerated boundary. File count, token count, and a green prose review never override this rule. The same stop applies when a new independent behavioral/effect boundary appears after a structural remediation: preserve the parent obligation map, retain rejected revisions, and split instead of appending r6-style requirements.
 
 ## §23 — PERMANENT RULE: UI slice gates must prove a delta against the live baseline and honor global layout ownership
 

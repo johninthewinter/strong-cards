@@ -1,8 +1,8 @@
 # hooks — making the Strong Card rules structural
 
-The rules in `RULES.md` fail the moment a session forgets them. These hooks make two of them
-mechanical: the sandbox rule is genuinely **enforced** (blocked at the tool call), and the
-verify/judge rules are **forced into the session's context** at the moment they apply.
+The rules in `RULES.md` fail the moment a session forgets them. These hooks add mechanical
+checks and reminders. They are supplemental controls: command-pattern blocking does not create
+a complete OS/container sandbox, and hook output never has controller acceptance authority.
 
 ## Install
 
@@ -32,9 +32,10 @@ hook config is snapshotted at startup.
 
 ## What a hook CAN do
 
-- **Block a tool call.** `PreToolUse` + exit code 2 prevents the call; stderr is fed back to
-  Claude as the reason. This is real enforcement, not a reminder — the sandbox guard uses it,
-  and it is the only rule in this repo that a hook can genuinely make impossible to violate.
+- **Block a matched tool call.** `PreToolUse` + exit code 2 prevents that call; stderr is fed
+  back to Claude as the reason. The guard covers only the command shapes it recognizes. It does
+  not constrain unmatched tools, child processes, filesystem capabilities, secrets or network;
+  qualified harness and OS/container policy remain the security boundary.
 - **Inject text into Claude's context.** Exit 0 with JSON on stdout:
   ```json
   {"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"…"}}

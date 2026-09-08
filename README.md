@@ -25,7 +25,8 @@ real incident or a real observation in `runs/` — nothing is invented for compl
 |---|---|
 | `RULES.md` | The consolidated global ruleset. Doctrine (§1) + mandatory operational rules (§2–§8). Read this before dispatching anything. |
 | `CARD-TEMPLATE.md` | The reusable Strong Card template — the exact card shape that worked across 20+ cards. Copy it per card. |
-| `JUDGE-PROTOCOL.md` | The two judge roles: per-card fail/slow judge (Sonnet, low effort, runs every time) and post-run retrospective judge (Opus, once per run). |
+| `JUDGE-PROTOCOL.md` | The two judge roles: per-card fail/slow judge and post-run retrospective judge. |
+| `CONSTRUCTION-PROTOCOL.md` | Bounded evidence packets, contract ledgers, PB0-PB10, role budgets, split thresholds and controller receipts. Read before drafting. |
 | `hooks/README.md` | What a Claude Code hook can and cannot enforce here — read before trusting the hooks. |
 | `hooks/settings.hooks.json` | Drop-in hooks block to merge into a project's `.claude/settings.json`. |
 | `hooks/*.sh` | The hook scripts themselves. |

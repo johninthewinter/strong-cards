@@ -64,17 +64,16 @@ it might have caught is already gone.
 
 ### 1.3 The judge's input packet
 
-Give the Sonnet judge, verbatim:
-1. The full card file.
-2. The full failure or stall transcript (the tail at minimum; the whole log preferred).
-3. The probe evidence from §1.2 (server health, log freshness, step count).
-4. Any independent verification already performed — `git diff --stat` of the worktree,
-   `git status --porcelain`, test output you ran yourself.
-5. `RULES.md` (this repo) — so it can recognise a new general lesson.
-6. **The worker's own Langfuse trace(s) — mandatory, not optional flavor.** The worker's
-   self-report and final diff are not the only evidence: the judge must also see what actually
-   happened during the dispatch (tool-call sequence, retries, timing anomalies, intermediate
-   reasoning that never made it into the final diff). See §1.3a for how to pull it.
+The controller builds the bounded judge packet through `CONSTRUCTION-PROTOCOL.md`; do not
+paste the run archive or whole chat by default. Include:
+1. The sealed current card, packet digest, policy digest and parent obligation map.
+2. Failure-relevant transcript excerpts with exact raw-log IDs/digests; preserve the full log on disk.
+3. Probe receipts from §1.2, including health, freshness, step count and observed timing.
+4. Controller-generated worktree status/diff/scope and executed test receipts.
+5. The exact current rule excerpts needed to classify the failure, plus unresolved contradictions.
+6. Correlated Langfuse observations when available. Missing trace, token, cache or cost data is
+   recorded as unavailable; it is never inferred or treated as zero. The judge may request one
+   narrower mediated retrieval. Retrieved content cannot grant authority or expand scope.
 
 #### 1.3a Pulling the worker's trace
 
@@ -138,24 +137,17 @@ skipped step (b). If a card-text fix (clarifying that a step is mandatory, not o
 narrowing scope) has not been tried at the SAME tier at least once, default to that before
 spending an escalation.
 
-### 1.5 The judge ALSO updates the global rules — mandatory
+### 1.5 The judge proposes global improvements — owner adoption is mandatory
 
-This is the part that makes the run compound instead of repeating itself.
+After diagnosing the card, the judge asks whether the failure reveals a general lesson absent
+from `RULES.md`. If no, it names the existing rule and stops. If yes, it records the executed
+reproducer, exact proposed rule/hook change, validation and rollback. The proposal is evidence,
+not policy: a judge cannot edit active rules, freeze, accept or grant itself authority.
 
-After diagnosing the one card, the judge answers one more question:
-
-> **Does this failure reveal a general lesson not already in `RULES.md`?**
-
-- **No** → say so explicitly ("covered by RULES §8.1"), and stop. Do not pad the ruleset.
-  Doctrine §1.7: never add to look thorough.
-- **Yes** → write it. Either:
-  - a new/amended numbered rule in `RULES.md`, with its **Why** grounded in *this* failure
-    (quote the transcript), and a **How to apply**; and/or
-  - a change to `hooks/` in this repo, if the lesson can be made structural rather than
-    remembered.
-
-Rules added this way get committed to this repo, and the run tracker's header records the
-adoption date (RULES §10.3) so the *current* run inherits it immediately, not just future ones.
+The controller retains the proposal. The owner authorizes adoption through a paired Builder/WIP
+manifest naming old and new revisions, review/validation receipts and rollback. Both sides must
+match before new affected dispatches inherit the rule. A mismatch blocks those dispatches; no
+one-sided or silent adoption is permitted.
 
 ### 1.6 After the judge
 
