@@ -1,10 +1,24 @@
 {
-  "_comment": "Strong Card hooks. Merge the 'hooks' key into a project's .claude/settings.json. Copy the .sh files to .claude/hooks/ and chmod +x. Requires jq and git on PATH.",
+  "_comment": "Strong Card hooks. Merge the 'hooks' key into a project's .claude/settings.json. Copy the .sh/.py files to .claude/hooks/ and chmod +x. Requires jq, python3, and git on PATH. Refreshed 2026-09-15 against the live ~/.claude/settings.json on the reference machine -- see docs/reviews/2026-09-15-global-hooks-audit/report.md section 2.3 for what had drifted (this file previously listed 5 of 6 live PreToolUse/Bash hooks and 2 of 4 live PostToolUse/Bash hooks, and carried an older/shorter SessionStart wording). herdr-agent-state.sh (SessionStart) and mom-trigger.py (UserPromptSubmit) are intentionally NOT included here -- they are machine-local/3rd-party, not part of the Strong Card doctrine itself.",
   "hooks": {
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/no-ai-attribution-guard.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/enforce-codex-timeout.py"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/sc-delete-guard.sh",
+            "timeout": 20
+          },
           {
             "type": "command",
             "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/sc-dispatch-sandbox-guard.sh",
@@ -14,6 +28,21 @@
             "type": "command",
             "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/sc-firstfail-block.sh",
             "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/sc-pi-interactive-guard.sh",
+            "timeout": 20
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/sc-no-plan-in-tmp.sh",
+            "timeout": 10
           }
         ]
       }
@@ -24,6 +53,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/sc-trash-verify.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
             "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/sc-firstfail-guard.sh",
             "timeout": 30
           },
@@ -31,6 +65,11 @@
             "type": "command",
             "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/sc-dispatch-postcheck.sh",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/no-ai-attribution-postcheck.sh",
+            "timeout": 10
           }
         ]
       }
@@ -51,7 +90,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Strong Card rules are in effect: every model dispatch runs in its own git worktree (never the main repo path), every tree is committed before dispatch, every self-report is independently verified against git diff --stat + direct test execution, and every failed or stalled card gets a Sonnet judge pass before any retry. Full ruleset: strong-cards RULES.md.'",
+            "command": "echo 'Strong Card rules are GLOBALLY in effect (source of truth: /Users/misterj/src/strong-cards_wip): every model dispatch (opencode/local worker, Luna, DeepSeek, or any coder) runs in its own git worktree, never the primary working tree; every tree is committed before dispatch and every verified card is committed to close it out; every self-report is independently re-verified via git diff --stat + direct test execution, never trusted at face value; every card that fails its first attempt or stalls gets a Sonnet (low-effort) judge pass before any retry, and the judge updates strong-cards_wip RULES.md/hooks when a failure teaches a general lesson.'",
             "timeout": 10
           }
         ]

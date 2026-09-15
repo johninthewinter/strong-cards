@@ -26,6 +26,7 @@ command -v python3 >/dev/null 2>&1 || exit 0
 
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
 [ -n "$CMD" ] || exit 0
+HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" 2>/dev/null && pwd)
 TRASH_TOOL="$SCRIPT_DIR/sc-trash.sh"
@@ -62,10 +63,11 @@ fi
 # ---------------------------------------------------------------------------
 # Layer 2 — tokenized argv analysis.
 # ---------------------------------------------------------------------------
-PY_VERDICT=$(python3 - "$CMD" <<'PYEOF' 2>/dev/null
+PY_VERDICT=$(python3 - "$CMD" "$HOOK_CWD" <<'PYEOF' 2>/dev/null
 import os, shlex, subprocess, sys
 
 cmd = sys.argv[1]
+hook_cwd = sys.argv[2] if len(sys.argv) > 2 else ""
 
 OPERATORS = {";", "&&", "||", "|", "&", "(", ")", "|&", "&&&", "\n"}
 KEYWORDS = {"then", "do", "else", "elif", "fi", "done", "{", "}", "!", "time"}
@@ -193,13 +195,17 @@ def positional_args(args):
 GLOB = set("*?[")
 
 for words in segments:
-    # Separate redirections from command words for this segment.
+    # Separate redirections from command words for this segment. Each redirect_op
+    # keeps its target operand alongside it (not just the operator) so a truncating
+    # `>`/`>|` can be checked against the actual filesystem below, rather than judged
+    # on operator shape alone.
     cmdwords, redirect_ops = [], []
     j = 0
     while j < len(words):
         w = words[j]
         if w in (">", ">|", ">>", "<", "<<", "<<<"):
-            redirect_ops.append(w)
+            target = words[j + 1] if j + 1 < len(words) else ""
+            redirect_ops.append((w, target))
             j += 2  # skip the target operand
             continue
         if w.isdigit() and j + 1 < len(words) and words[j + 1] in (">", ">>", ">|"):
@@ -211,7 +217,8 @@ for words in segments:
     argv, name = peel(cmdwords)
 
     # ---- pure truncation via `> file` (see TRASH-README for the tradeoff) ----
-    if ">" in redirect_ops or ">|" in redirect_ops:
+    trunc_targets = [t for op, t in redirect_ops if op in (">", ">|")]
+    if trunc_targets:
         rest = argv[1:] if argv else []
         noop = (
             not argv
@@ -221,8 +228,25 @@ for words in segments:
                 and all(a in ("-n", "", '""', "''", "%s") for a in rest))
         )
         if noop:
-            fail("destructive truncation via `>` with no content-producing command",
-                 "Emptying an existing file is deletion of its contents.")
+            # Only truncation of an EXISTING file destroys content; a redirect that
+            # creates a brand-new file has nothing to destroy. Resolve the target
+            # relative to the tool call's cwd (falling back to this process's own
+            # cwd) and stat it before judging. An unresolvable target (empty string,
+            # e.g. from malformed quoting) is treated conservatively as unknown --
+            # still blocked, matching the pre-fix behaviour -- rather than assumed safe.
+            target = trunc_targets[-1]
+            target_exists = True
+            if target and hook_cwd:
+                # Only resolve relative to a caller-supplied cwd. Falling back to
+                # this hook process's own cwd would let a caller that omits `cwd`
+                # (or supplies a stale one) make a truly-existing file look
+                # nonexistent -- an unknown cwd stays conservative/blocked, per
+                # the same rule an unresolvable target already followed below.
+                resolved = target if os.path.isabs(target) else os.path.join(hook_cwd, target)
+                target_exists = os.path.lexists(os.path.expanduser(resolved))
+            if target_exists:
+                fail("destructive truncation via `>` with no content-producing command",
+                     "Emptying an existing file is deletion of its contents.")
 
     if not argv:
         continue

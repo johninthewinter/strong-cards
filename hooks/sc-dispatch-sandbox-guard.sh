@@ -58,22 +58,124 @@ fi
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
 [ -n "$CMD" ] || exit 0
 
-# Is this a coder dispatch? Extend this pattern for other harnesses.
+# Is this a coder dispatch? Tokenization-aware (mirrors sc-delete-guard.sh's Layer 2:
+# shlex-tokenize, split on shell operators into simple-command segments, peel wrapper
+# words, then judge only argv[0]/argv[1] of each segment) instead of a bare substring
+# case match. A bare substring match false-triggers when a dispatch keyword is merely
+# quoted inside an unrelated read-only command -- e.g. `cat` or `grep` on a file whose
+# text quotes this guard's own example dispatch lines back (reproduced live 2026-09-15
+# while auditing this very hook; see docs/reviews/2026-09-15-global-hooks-audit/report.md
+# section 2.6.2). Falls back to the previous substring behaviour only if python3 is
+# missing (degrade, don't wedge every Bash call over a missing interpreter).
+SHAPE=$(
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$CMD" <<'PYEOF' 2>/dev/null
+import os, shlex, sys
+
+cmd = sys.argv[1]
+OPERATORS = {";", "&&", "||", "|", "&", "(", ")", "|&", "&&&", "\n"}
+KEYWORDS = {"then", "do", "else", "elif", "fi", "done", "{", "}", "!", "time"}
+WRAPPERS = {"sudo", "doas", "env", "command", "nohup", "nice", "ionice",
+            "stdbuf", "builtin", "exec", "setsid", "timeout", "eval"}
+
+try:
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    tokens = list(lex)
+except Exception:
+    print("PARSE_FAILED")
+    sys.exit(0)
+
+segments, cur = [], []
+for t in tokens:
+    if t in OPERATORS or t in KEYWORDS:
+        if cur:
+            segments.append(cur)
+        cur = []
+    else:
+        cur.append(t)
+if cur:
+    segments.append(cur)
+
+def peel(words):
+    i = 0
+    while i < len(words):
+        w = words[i]
+        if "=" in w and not w.startswith("=") and "/" not in w.split("=")[0]:
+            i += 1
+            continue
+        base = os.path.basename(w.lstrip("\\"))
+        if base in WRAPPERS:
+            i += 1
+            while i < len(words) and words[i].startswith("-"):
+                i += 1
+            if base == "timeout" and i < len(words) and not words[i].startswith("-"):
+                i += 1
+            continue
+        break
+    argv = words[i:]
+    if not argv:
+        return [], ""
+    return argv, os.path.basename(argv[0].lstrip("\\"))
+
+def first_positional(rest):
+    for a in rest:
+        if not a.startswith("-"):
+            return a
+    return ""
+
+shapes = []
+for words in segments:
+    argv, name = peel(words)
+    if not argv:
+        continue
+    rest = argv[1:]
+    if name in ("opencode", "opencode2") and first_positional(rest) == "run":
+        shapes.append("DISPATCH")
+    elif name == "claude-local" and rest[:1] == ["-p"]:
+        shapes.append("DISPATCH")
+    elif name == "strong-card-runner":
+        shapes.append("DISPATCH")
+    elif name == "pi" and rest[:1] and rest[0] in ("-p", "--print"):
+        shapes.append("IS_PI")
+    elif name == "codex" and first_positional(rest) == "exec":
+        shapes.append("IS_CODEX")
+    elif name == "sbx" and first_positional(rest) == "exec":
+        shapes.append("IS_SBX")
+
+if shapes:
+    print(",".join(shapes))
+else:
+    print("NONE")
+PYEOF
+  else
+    printf 'NO_PYTHON3\n'
+  fi
+)
+
 IS_PI=0
 IS_SBX=0
 IS_CODEX=0
-case "$CMD" in
-  *"opencode run"*|*"opencode2 run"*|*"claude-local -p"*|*"strong-card-runner"*) ;;
-  *"pi -p"*|*"pi --print"*) IS_PI=1 ;;
-  *"codex exec"*) IS_CODEX=1 ;;
-  *) exit 0 ;;
+case "$SHAPE" in
+  NO_PYTHON3|PARSE_FAILED)
+    # Degrade to the previous substring behaviour rather than wedge every Bash call.
+    case "$CMD" in
+      *"opencode run"*|*"opencode2 run"*|*"claude-local -p"*|*"strong-card-runner"*) ;;
+      *"pi -p"*|*"pi --print"*) IS_PI=1 ;;
+      *"codex exec"*) IS_CODEX=1 ;;
+      *) exit 0 ;;
+    esac
+    case "$CMD" in *"sbx exec"*) IS_SBX=1 ;; esac
+    ;;
+  NONE)
+    exit 0
+    ;;
+  *)
+    case "$SHAPE" in *IS_PI*) IS_PI=1 ;; esac
+    case "$SHAPE" in *IS_CODEX*) IS_CODEX=1 ;; esac
+    case "$SHAPE" in *IS_SBX*) IS_SBX=1 ;; esac
+    ;;
 esac
-
-# Containerised dispatch (sbx): `opencode2 run` has NO --dir/--cwd flag at all
-# (confirmed against `opencode2 run --help`, v0.0.0-beta-19234 — its positionals are
-# the MESSAGE). When the dispatch goes through `sbx exec`, the sandbox mount is the
-# boundary, and `-w/--workdir` names the directory the worker runs in.
-case "$CMD" in *"sbx exec"*) IS_SBX=1 ;; esac
 
 # Read-only / help invocations are not dispatches.
 case "$CMD" in *" --help"*|*" -h "*|*"--list-models"*|*"--version"*|*" -v "*) exit 0 ;; esac

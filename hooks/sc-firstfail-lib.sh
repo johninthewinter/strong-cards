@@ -38,6 +38,16 @@ sc_ff_lock_path() (
   printf '%s/sc-firstfail-%s.json\n' "$scff_dir" "$scff_key"
 )
 
+# WRAPPERS mirrors enforce-codex-timeout.py's WRAPPERS set (L26-29 there): words that can
+# prefix a real command (sudo, timeout, env, ...) without themselves being the command. The
+# regex below is a bounded, non-recursive approximation of that file's peel() -- it allows zero
+# or more wrapper words, each optionally followed by short dash-options and/or a single
+# bare/numeric operand (timeout's duration), before the real command name. This is what closes
+# the 2026-09-15 false-positive: a `timeout 900 tail ...` command must be judged as `tail`
+# (read-only inspection), not misread as an unrecognized command that falls through to the
+# pytest-summary-string fallback.
+scff_wrapper='((sudo|doas|env|command|nohup|nice|ionice|stdbuf|builtin|exec|setsid|timeout|eval)([[:space:]]+-[^[:space:]]+)*([[:space:]]+[0-9][0-9.]*[a-zA-Z]?)?[[:space:]]+)*'
+
 # Extract the directory the command targets. Dispatch directory flags win over a
 # leading cd because a harness can itself be launched from some unrelated directory.
 sc_ff_command_dir() (
@@ -51,8 +61,8 @@ sc_ff_command_dir() (
 
   if [ -z "$scff_dir" ]; then
     scff_dir=$(printf '%s' "$scff_cmd" \
-      | grep -oE '^[[:space:]]*\(?[[:space:]]*cd[[:space:]]+("[^"]+"|'"'"'[^'"'"']+'"'"'|[^[:space:]&;]+)' \
-      | head -n1 | sed -E 's/^[[:space:]]*\(?[[:space:]]*cd[[:space:]]+//' | tr -d "\"'" || true)
+      | grep -oE "^[[:space:]]*\\(?[[:space:]]*${scff_wrapper}cd[[:space:]]+(\"[^\"]+\"|'[^']+'|[^[:space:]&;]+)" \
+      | head -n1 | sed -E "s/^[[:space:]]*\\(?[[:space:]]*${scff_wrapper}cd[[:space:]]+//" | tr -d "\"'" || true)
   fi
 
   if [ -z "$scff_dir" ]; then
@@ -103,19 +113,19 @@ sc_ff_is_pytest_command() (
   scff_quote="[\"']?"
 
   printf '%s' "$1" | grep -qE \
-    "${scff_boundary}${scff_assign}${scff_quote}([^[:space:];&|()\"']*/)?(pytest|py\\.test)${scff_quote}${scff_end}" \
+    "${scff_boundary}${scff_assign}${scff_wrapper}${scff_quote}([^[:space:];&|()\"']*/)?(pytest|py\\.test)${scff_quote}${scff_end}" \
     && return 0
   printf '%s' "$1" | grep -qE \
-    "${scff_boundary}${scff_assign}(\"[^\"]*/(pytest|py\\.test)\"|'[^']*/(pytest|py\\.test)')${scff_end}" \
+    "${scff_boundary}${scff_assign}${scff_wrapper}(\"[^\"]*/(pytest|py\\.test)\"|'[^']*/(pytest|py\\.test)')${scff_end}" \
     && return 0
   printf '%s' "$1" | grep -qE \
-    "${scff_boundary}${scff_assign}${scff_quote}([^[:space:];&|()\"']*/)?python([0-9.]+)?${scff_quote}[[:space:]]+-m[[:space:]]+(pytest|py\\.test)${scff_end}" \
+    "${scff_boundary}${scff_assign}${scff_wrapper}${scff_quote}([^[:space:];&|()\"']*/)?python([0-9.]+)?${scff_quote}[[:space:]]+-m[[:space:]]+(pytest|py\\.test)${scff_end}" \
     && return 0
   printf '%s' "$1" | grep -qE \
-    "${scff_boundary}${scff_assign}(\"[^\"]*/python([0-9.]+)?\"|'[^']*/python([0-9.]+)?')[[:space:]]+-m[[:space:]]+(pytest|py\\.test)${scff_end}" \
+    "${scff_boundary}${scff_assign}${scff_wrapper}(\"[^\"]*/python([0-9.]+)?\"|'[^']*/python([0-9.]+)?')[[:space:]]+-m[[:space:]]+(pytest|py\\.test)${scff_end}" \
     && return 0
   printf '%s' "$1" | grep -qE \
-    "${scff_boundary}${scff_assign}(uv|poetry|pipenv)[[:space:]]+run([[:space:]]+[^;&|()]*)?[[:space:]]+(pytest|py\\.test)${scff_end}"
+    "${scff_boundary}${scff_assign}${scff_wrapper}(uv|poetry|pipenv)[[:space:]]+run([[:space:]]+[^;&|()]*)?[[:space:]]+(pytest|py\\.test)${scff_end}"
 )
 
 sc_ff_has_pytest_summary() (
@@ -138,14 +148,14 @@ sc_ff_is_readonly_inspection_command() (
   scff_cmd_re='(ls|cat|head|tail|less|more|grep|egrep|fgrep|rg|find|wc|file|stat|pwd|echo|printf|jq)'
 
   printf '%s' "$1" | grep -qE \
-    "${scff_boundary}${scff_assign}([^[:space:];&|()\"']*/)?${scff_cmd_re}([[:space:]]|\$)" \
+    "${scff_boundary}${scff_assign}${scff_wrapper}([^[:space:];&|()\"']*/)?${scff_cmd_re}([[:space:]]|\$)" \
     && return 0
 
   # `git log`/`show`/`diff`/`status`/`blame` — read-only inspection subcommands only; other
   # git subcommands (e.g. `git merge`, which legitimately prints "N files changed") are not
   # matched here on purpose.
   printf '%s' "$1" | grep -qE \
-    "${scff_boundary}${scff_assign}([^[:space:];&|()\"']*/)?git[[:space:]]+(log|show|diff|status|blame)([[:space:]]|\$)" \
+    "${scff_boundary}${scff_assign}${scff_wrapper}([^[:space:];&|()\"']*/)?git[[:space:]]+(log|show|diff|status|blame)([[:space:]]|\$)" \
     && return 0
 
   return 1
