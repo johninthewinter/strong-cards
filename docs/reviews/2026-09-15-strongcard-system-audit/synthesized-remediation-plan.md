@@ -2,7 +2,11 @@
 
 **Date:** 2026-09-15
 **Inputs:** the 4-model audit in this directory (`fable5.1-high.md`, `opus-medium.md`, `gpt-6-astra-xhigh.md`, `gpt-5.6-high.md`) plus two independent refactor-plan dispatches (Fable 5.1 medium, GPT-6 Astra high) that ran against it.
-**Method:** every load-bearing claim below was re-verified against live code before being carried into a card. Where verification changed the finding, the finding is corrected here rather than inherited.
+**Version:** v2 (2026-09-15). v1 was reviewed independently by Fable 5.1 medium (ACCEPT) and GPT-6 Astra medium (NEEDS-FIX, 4 findings). v2 re-verifies all four against primary evidence and revises accordingly: 2 findings accepted in full (§1a containment, §1b Card F / SC-07 guarantees), 2 accepted in part with the reviewer's own framing rejected on verification (§1c attribution, §1d1 enumeration). Every change is marked `(v2)` in place.
+
+**Method:** every load-bearing claim below was re-verified against live code before being carried into a card. Where verification changed the finding, the finding is corrected here rather than inherited. This applies to review findings too: v2 re-ran the git and file enumerations itself rather than adopting a reviewer's counts, and where the reviewer's numbers did not survive that check they are rejected with the evidence shown.
+
+**Known limitation — stated rather than papered over.** The two independent *planning* dispatches this synthesis drew on (Fable 5.1 medium, GPT-6 Astra high) were **never persisted to disk**; only the four *audit* files in this directory were. Claims in v1 about what those planning dispatches did or did not contain are therefore **unverifiable from any artifact**, and v2 withdraws every such claim rather than repeating it — see §1b and §1c. This is a live instance of the defect SC-06 exists to fix, and it is the reason SC-06's mechanical `tee` applies to planning dispatches, not only to card reviews.
 **Out of scope:** `docs/plan/strong-cards/phase3-remediate-strong-card-CARD.md` (now at **v4**, third round of independent NEEDS-FIX reviews, still in flight). It is orthogonal to every card below and is not re-planned, re-scoped, or touched.
 
 ---
@@ -14,7 +18,7 @@ Four things moved before any card was written.
 | Audit claim | Verified result |
 |---|---|
 | Receipts lives only on `sc/receipts-gate`, unmerged, uninstalled | **Confirmed.** 5 commits ahead of `main`; `git ls-tree main hooks/` has no receipts file; absent from `~/.claude/hooks/` (24 entries). 545 lines. `hooks/README.md` itself calls it "manual (not a Claude Code hook)" and names the "enforced wiring" as a reviewer checkbox. |
-| 3 reviewer-model-identity substitutions | **Refuted** (see §1d). At most 1 ambiguous case, disclosed in-commit. |
+| 3 reviewer-model-identity substitutions | **Refuted** (see §1d1). Exact enumeration: 4 correction artifacts exist across 25 review dirs; exactly 1 touches cross-model-family identity, disclosed in-commit. |
 | 11/11 cards fail `parse_strong_card()` | **Confirmed, and worse.** Exact causes now known (see SC-04). |
 | `process-adoption.json` is stale | **Confirmed firsthand.** Pins Builder `07e885e` / WIP `8f38901`; live HEADs are `9a16678` / `7578be5`. No runtime path checks the pin. |
 
@@ -46,9 +50,20 @@ So Fable's patch list is accurate. I still recommend against it, for three reaso
 
 **3. Its current net value is negative, not merely incomplete.** Astra ran four adversarial fixtures — including a reference to a nonexistent receipt and an explicitly-false prerequisite — and **all four returned PASS**. A gate that passes fabricated evidence is worse than no gate, because it converts an acknowledged grounding problem into documented false confidence. Hardening it to "probably sound" and wiring it to freeze inherits that liability; deleting it does not.
 
-GPT-5.6's architectural framing — *Markdown must never become executable input* — is right, and is the actual root cause rather than a stylistic preference. But the replacement needs one correction the prior plans did not make: **if the model proposes free-form shell and the controller merely runs it, the trust problem is unchanged and the sandbox becomes necessary again.** The replacement is only sound if the controller executes from a **fixed typed probe vocabulary** — parameterized read-only operations (`find_callers(symbol)`, `grep(pattern, path)`, `git_show(sha, path)`, `list_entrypoints()`) with typed arguments and no shell. That is what removes the need for a container: there is no untrusted string to contain.
+GPT-5.6's architectural framing — *Markdown must never become executable input* — is right, and is the actual root cause rather than a stylistic preference. But the replacement needs one correction the prior plans did not make: **if the model proposes free-form shell and the controller merely runs it, the trust problem is unchanged.** The replacement requires a **fixed typed probe vocabulary** — parameterized read-only operations (`find_callers(symbol)`, `grep(pattern, path)`, `git_show(sha, path)`, `list_entrypoints()`) with typed arguments and no shell.
 
-**Disposition:** build SC-05 (controller receipts). Do **not** merge `sc/receipts-gate`; **archive** it — tag the branch and leave it unmerged as reference. The container hardening work (`--network none`, `--cap-drop=ALL`, `--read-only`, argv-not-eval) is genuinely good engineering and should be salvaged verbatim if a future card ever does need to execute untrusted argv. Deleting the branch would throw that away; merging it would install a gate that passes forged evidence. Archive is the correct third option and neither prior plan offered it.
+**Correction (v2), conceding a review finding against an earlier draft of this plan.** That earlier draft went on to claim the typed vocabulary is "what removes the need for a container." **That was an unsound leap and it is withdrawn.** Eliminating a shell eliminates *command injection*. It does not eliminate the trust boundary, and it does not eliminate the attack classes that motivate containment:
+
+- **Path traversal / escape.** `grep(pattern, path)` and `git_show(sha, path)` still take a model-chosen `path`. `../../../.ssh/id_ed25519` is a perfectly well-typed string. Typing constrains *shape*, not *reach*.
+- **Symlink attacks.** A repo-relative path that passes a prefix check can resolve, via a tracked symlink, outside the repo — the check and the open are two different moments (TOCTOU).
+- **Resource exhaustion.** A typed `pattern` is a regex; catastrophic backtracking, and unbounded match output over a large tree, are denial-of-service with no shell involved at all. The very timeout/byte-cap gaps diagnosed in Fable's list recur here.
+- **Read amplification.** Even a strictly read-only vocabulary, uncontained, is an arbitrary-file-read primitive over the host for whatever the controller process can see.
+
+**So containment is a requirement on SC-05 regardless of shell-vs-typed-args.** Argument reduction and process containment are independent controls and the plan now treats them that way. SC-05 ships with `--network none`, `--cap-drop=ALL`, `--read-only`, a per-probe timeout, an output byte cap, and post-`realpath` containment of every path argument to the repo root. The question of whether containment could ever be dropped is **not** settled by this plan: it may be revisited only after SC-05 has shipped and its own probe-argument handling has been independently audited, and only on demonstrated evidence — never on the "no shell" argument alone.
+
+This makes the salvage note in the Disposition below load-bearing rather than optional: the container hardening on `sc/receipts-gate` is not archived-for-maybe, it is **the starting point for SC-05's own sandbox**.
+
+**Disposition:** build SC-05 (controller receipts). Do **not** merge `sc/receipts-gate`; **archive** it — tag the branch and leave it unmerged as reference. The container hardening work (`--network none`, `--cap-drop=ALL`, `--read-only`, argv-not-eval) is genuinely good engineering and is **salvaged verbatim into SC-05 as its probe sandbox** — not held in reserve for a hypothetical future card. Per the v2 correction above, SC-05 needs containment on its own account. Deleting the branch would throw that away; merging it would install a gate that passes forged evidence. Archive is the correct third option and neither prior plan offered it.
 
 *Argument against my own recommendation, stated honestly:* replacement is a larger, slower card than five bash fixes, and it defers grounding coverage by weeks while the system currently has none. If the schedule cannot absorb SC-05, the correct fallback is **not** to patch and ship Receipts — it is to ship nothing and keep the Haiku dependency-check, because a known-absent gate is safer than a gate believed to work. Never install the patched version as an interim measure; that is how the false-confidence failure mode arrives.
 
@@ -62,7 +77,13 @@ Not scope creep. Three verified defects are fixed by nothing else in either plan
 
 A gate is the only artifact that converts these from documentation into an exit code, so it sits inside what the audit asked for, not beyond it.
 
-**But Astra's packaging is wrong, by Astra's own rule.** Bundling card schema + exact repo HEAD + policy revision + receipt digests + forward/reverse reachability into one card is exactly the "slice by observable outcome, not file count" violation Astra's own P1 #4 warns against, and it makes one card depend on four unfinished subsystems. Split it: the gate card (SC-07) should be **thin** — it validates a manifest and fails closed. The manifest's *contents* are produced by SC-04 (schema), SC-05 (receipt digests) and SC-06 (envelope digests). The gate ships last and small; that is what makes it shippable at all.
+**The packaging is still wrong for execution, but the charge of a rule violation is withdrawn (v2).**
+
+*Source-access limitation, stated plainly.* Astra's planning-dispatch output is **not persisted anywhere on disk**. I checked: `docs/reviews/2026-09-15-strongcard-system-audit/` contains only the four *audit* files, and `gpt-6-astra-xhigh.md` is the audit, not the plan. No `cards/`, `runs/`, or `.review/` artifact in either repo holds it. This is itself an instance of the gap SC-06 fixes — the planning dispatch was never `tee`'d, so it exists only in a conversation transcript I cannot re-read. **Every claim in this plan about what Astra's planning dispatch did or did not say is therefore unverifiable, and is marked as such rather than repeated with confidence.**
+
+Given that, the earlier draft's charge — that Astra's single admission-gate card violated Astra's own "slice by observable outcome" principle, and that SC-04/05/06/07 was my correction of it — **is retracted.** Astra states the original plan already carried this four-part structure conceptually (cards C/D/E/H), and I cannot check that against the source. I will not assert a rule violation I cannot evidence. What survives, on this plan's own merits and independent of authorship: **SC-07 must be thin** — it validates a manifest and fails closed; the manifest's *contents* are produced by SC-04 (schema), SC-05 (receipt digests) and SC-06 (envelope digests). That is a sequencing decision, not a critique, and no credit for it is claimed.
+
+**Card F — authenticated-acceptance-authority: disposition, previously missing.** Astra reports that its original plan contained a "Card F: authenticated-acceptance-authority" which this synthesis dropped with no disposition. I cannot verify the card's existence or wording. I *can* verify that its subject matter is real and that this plan had no card covering it: `gpt-6-astra-xhigh.md:51` records Astra's live probe accepting an attempt "with a different actor and no judge verdict/proof," then letting the original coder overwrite that outcome via `retry` with an arbitrary verdict, `can_retry()` returning true; the audit README independently records that `finish_attempt` "accepts JSON without authenticating the peer at all." **A silent drop was a real defect in this synthesis and it is corrected here, on the evidence, without needing to resolve the attribution question.** → new **SC-12 · ACCEPTANCE-AUTHORITY-AUTHENTICATION**. It is not folded into SC-07: admission (may this card freeze?) and acceptance authority (who may declare this attempt accepted, and can they be impersonated?) are different boundaries at different lifecycle points, and bundling them would repeat exactly the packaging mistake this section is about.
 
 ### (c) Judge-off-vendor and SCI-013 — **both belong. Different weights.**
 
@@ -72,13 +93,37 @@ The argument is correlated failure, not fairness. Reviewers sharing a vendor sha
 
 **SCI-013: yes, but as a rider, not a card.** Verified in `docs/STRONG-CARD-IMPROVEMENTS.md`: a green mutant command rewrote 43 tracked proof logs across fresh worktrees because logs serialized absolute worktree paths. Two things temper it. The controller **did** catch it — "the mutant result was green while the post-command tree was dirty, so the controller blocked re-BREAK before dispatch" — so a partial mitigation exists. But that mitigation is a post-hoc dirty check that only worked because the writes happened to land on tracked files; untracked or in-place-identical writes would pass silently. The principle — *executable gates treat retained proof as immutable input; replay writes only to a controller-provided temp dir; compare tracked **and** untracked state before and after every command, including green ones* — is correct and cheap. It is one invariant on the admission gate, not a standalone card. → folded into SC-07.
 
-Fable was right that both were missing from the original 10-item list. Astra surfacing neither is a real gap in Astra's plan.
+**Attribution, corrected (v2).** The earlier draft ended this section by asserting "Astra surfaced neither, a real gap in Astra's plan." **That assertion is withdrawn**, for two reasons.
+
+First, the same source-access limitation as §1b: Astra's planning dispatch is not on disk and I cannot re-read it. Astra states its plan explicitly *considered and rejected* judge-off-vendor as "not demonstrated necessary" — which is a disposition, not an omission — and that evidence-immutability (SCI-013's substance) was already carried as a requirement on its Cards E/H. I cannot verify either claim, and I will not repeat a gap-claim I cannot evidence.
+
+Second, what I *can* check cuts against the original phrasing anyway: `gpt-6-astra-xhigh.md` (the audit that is on disk) raises neither item, but that file is an audit, not a plan, and its silence is no evidence about the plan.
+
+**Both items stay in the plan on their merits** — the correlated-failure argument above stands on its own and does not depend on who said it first. **No credit for surfacing is claimed for either.** If Astra rejected judge-off-vendor as "not demonstrated necessary," that is a live disagreement worth naming rather than a gap: this plan's counter-argument is that the cost is a routing rule with no code and no migration, so the bar for adoption is *plausible correlated blind spots*, not *demonstrated necessity* — demanding demonstrated necessity for a zero-cost control inverts the burden of proof.
+
+**The SCI-013 check as originally written is insufficient (v2).** A before/after comparison catches the 43-log rewrite that motivated it, but it misses at least two attacks: **write-then-restore**, where a command mutates retained proof, reads or acts on it, and restores the original bytes before exiting (before/after compare clean, because the compare is the wrong pair of moments); and **untracked-file mutation**, where the write lands on a path git does not track, so a tracked-only diff sees nothing. The invariant as carried on SC-07 is therefore strengthened below from *compare before/after* to *make the proof physically unwritable, and detect access rather than only net change*.
 
 ### (d) Astra's two critiques — **one upheld, one upheld with a correction.**
 
-**(d1) "3 reviewer-model-identity substitutions" — Astra is right; the finding does not hold.** I ran a forensic sweep of every correction artifact in both repos.
+**(d1) "3 reviewer-model-identity substitutions" — the finding does not hold. Re-verified in full for v2, with the hedged count replaced by an exact enumeration.**
 
-There are exactly **two** `metadata-correction.json` files, both under `cards/SC-BLD-R03/` (the other four paths are byte-identical worktree copies; `strong-cards_wip` has no `cards/` directory at all). One is a pure SHA-256 transposition typo (`bf5f9d5e` → `bf9f5d9e`) with the reviewer field untouched. The other — R03 `r1-terra` — is the only artifact in either repo where a cross-model-family string changed.
+A reviewer objected that the earlier draft's "only 2 correction files exist total, at most 1 ambiguous" was misleading when read broadly, and that §1d contradicted the count by naming a different set of cases. **I re-ran the enumeration rather than accept either the original claim or the objection.** Sweep: every `*-corrected.json`, `*-original.json` and `metadata-correction.json` under every `cards/*/reviews/` path in `/Users/misterj/src/The_Builder`, worktree copies excluded as byte-identical duplicates of the same tracked files (`strong-cards_wip` has no `cards/` directory at all). Result — **exactly 4 correction artifacts across 25 review directories, and here is all four, in full, with no rounding and no hedging:**
+
+| # | Path | Kind | What actually changed |
+|---|---|---|---|
+| 1 | `cards/SC-BLD-R03/reviews/r1-terra/metadata-correction.json` | metadata | `reviewer` block: asserted `"model": "gpt-6-astra"` → `"requested_model": "gpt-5.6-terra"` + `"provider_observed_model_effort": "unavailable"`. Also narrows `scope` from "Frozen" to "Draft … pre-freeze". `verdict_and_probe_results_changed: false`. **The only cross-model-family string change in either repo.** |
+| 2 | `cards/SC-BLD-R03/reviews/r2-luna/metadata-correction.json` | metadata | One field, `inputs.r1_proof_sha256`: `…bf5f9d5e…` → `…bf9f5d9e…`, a byte transposition, re-confirmed by the controller with `shasum -a 256`. Reviewer identity untouched. |
+| 3 | `cards/SC-BLD-R01/reviews/r1-luna/review-original.json` + `review.json` | metadata (no correction file) | `effort: "low"` → `requested_effort: "high"`; `requested_model: "Luna"` → `"gpt-5.6-luna"`; adds `host_dispatch_accepted: true` and `observed_provider_effort: "unavailable"`. |
+| 4 | `cards/SC-BLD-P01/SC-BLD-P01-A1/reviews/r1-terra/review-corrected.json` | **content** | Withdraws blocker finding `BRK-A1-002` entirely; flips a probe `exit` from `1` to `0`; adds `supersedes: "review.json"`. Reviewer block byte-identical. |
+
+Two corrections to the earlier draft fall out of this, both against my own prior text:
+
+- **The "only 2 files total" phrasing was wrong as written.** Two `metadata-correction.json` files is exact; *four correction artifacts* is the honest total, because #3 and #4 use different mechanisms (an original/current pair, and a superseding file) that a `metadata-correction.json` count silently excludes. Fixed.
+- **The claim that #3 had `model: gpt-5.6-luna` "before and after" was inaccurate.** It was `"Luna"` before and `"gpt-5.6-luna"` after. Same vendor and same family, so the substance — this is a normalization, not a substitution — holds; but the certainty was overstated and is corrected here.
+
+I **do not** accept the accompanying charge of internal inconsistency between §1d and the earlier count: §1d already named all four cases (#1 and #2 as the two metadata corrections, #3 and #4 in the paragraph below), and #4 is additionally flagged as finding 3 in §0. The sets match. The defect was imprecise counting language, not a contradiction.
+
+**The identity conclusion is unchanged, and now rests on an exact enumeration rather than a hedge: of four correction artifacts, exactly one (#1) touches cross-model-family identity, and it does not support "produced by X, filed under Y."**
 
 It does not support "produced by X, filed under Y":
 
@@ -87,9 +132,9 @@ It does not support "produced by X, filed under Y":
 - **The uncorrected original already pointed at the Terra dispatch** — `"review_id": "SC-BLD-R03-r1-terra-medium"`, `"worktree": "/private/tmp/builder-r03-break-terra-r1"`.
 - **The project's own register says so.** SCI-005, verbatim: *"Neither error proves the requested runtime model was substituted."*
 
-The other two cases the count likely drew on are not identity at all: R01 `r1-luna` changed a *requested-effort* value (`low`→`high`) with `model: gpt-5.6-luna` before and after; the P01-A1 case changed review *content*.
+The other two artifacts the count drew on are not cross-family identity at all: #3 (R01 `r1-luna`) changed a *requested-effort* value (`low`→`high`) and normalized a model label within the same family (`"Luna"` → `"gpt-5.6-luna"`); #4 (P01-A1) left the reviewer block byte-identical and changed review *content*.
 
-So the count is **at most 1, ambiguous, and disclosed**. Calling it provenance falsification is unsupported — and an audit finding that fails its own P6 (never assume; verify before naming a shape) is itself a defect worth recording.
+So the exact count is **1 of 4 artifacts, ambiguous on its face, and disclosed in-commit** — not "3 substitutions." Calling it provenance falsification is unsupported — and an audit finding that fails its own P6 (never assume; verify before naming a shape) is itself a defect worth recording.
 
 **The honest finding is stronger than the one it replaces, and it is why the card survives:** every reviewer block in this corpus is self-reported by the reviewing model inside its own output. There are no timestamps beyond date-only, no run IDs, no dispatch envelope, no signature anywhere under `cards/`. Model identity is **unverifiable in both directions** — you can neither prove substitution nor disprove it. That is a structural provenance gap, and the remediation is identical either way (SCI-005: the controller, not the model, supplies dispatch metadata). **Keep SC-06; fix its justification.** It is now motivated by undecidability, not by fraud — which also means it should not be sequenced as an emergency.
 
@@ -101,7 +146,7 @@ So Fable and Astra actually agree on the mechanism; the only genuinely weak clau
 
 ## 2. The cards
 
-Eleven bounded cards. Every one is independently acceptable and independently revertible.
+Twelve bounded cards. Every one is independently acceptable and independently revertible. (Eleven in v1; SC-12 added in v2 — see §1b.)
 
 ### Wave 0 — blocking; nothing parallel dispatches until SC-01 lands
 
@@ -130,7 +175,8 @@ Make the authored card and the ingested card one schema. Demote the PB0–PB10 C
 *Touches:* `CARD-TEMPLATE.md`, `builder_runtime/t11_card_ingestion.py`, `tests/runtime/`.
 
 **SC-05 · CONTROLLER-GENERATED-RECEIPTS** — *effort L · risk MED · WIP + Builder*
-Per §1a. Controller runs a **typed probe vocabulary** (no shell) before drafting; stores `argv` + exit code + output digest + repo SHA + timestamp as JSON; cards reference receipt IDs by digest. Includes real forward *and* reverse reachability — reverse actually runs a search rather than checking that a `B<n>` line exists. Archive `sc/receipts-gate` under a tag; do not merge. Rewrite RULES §27 to describe the shipped mechanism.
+Per §1a. Controller runs a **typed probe vocabulary** (no shell) before drafting; stores `argv` + exit code + output digest + repo SHA + timestamp as JSON; cards reference receipt IDs by digest.
+*Containment is in scope, not deferred (v2 correction, §1a).* Typed arguments reduce injection; they do **not** remove the trust boundary. Every probe runs contained — `--network none`, `--cap-drop=ALL`, `--read-only`, per-probe timeout, output byte cap — and every path argument is containment-checked **after** `realpath` resolution against the repo root, closing symlink escape and TOCTOU. Regex arguments carry a match budget. The `sc/receipts-gate` container hardening is the starting point for this, which is why the branch is archived rather than deleted. Dropping containment is **not** authorized by this plan and may only be revisited after SC-05 ships and its argument handling is independently audited. Includes real forward *and* reverse reachability — reverse actually runs a search rather than checking that a `B<n>` line exists. Archive `sc/receipts-gate` under a tag; do not merge. Rewrite RULES §27 to describe the shipped mechanism.
 *Retires:* the Haiku dependency-check — but **only after** this demonstrably catches its cases on replay of the three known misses (T03's absent caller, actor-sep's two other callers, repo-identity v1). Two unenforced grounding rules is how coverage reached zero; do not create a third overlap.
 
 **SC-06 · REVIEW-PROVENANCE-AND-PERSISTENCE** — *effort M · risk LOW · Builder + hooks*
@@ -142,8 +188,21 @@ Controller stamps the dispatch envelope (requested model, effort, host acknowled
 
 **SC-07 · ADMISSION-GATE (`sc-freeze`)** — *effort L · risk MED · WIP + Builder*
 One executable, fail-closed gate. Consumes a manifest and validates: card schema (SC-04), exact repo HEAD against the adoption pin (**verified stale today**), policy/adoption revision, receipt digests (SC-05), envelope digests (SC-06), forward and reverse reachability. Then delete the equivalent manual checklist prose.
-*Carries the SCI-013 invariant:* gates treat retained proof as immutable input; replay writes only to a controller-provided temp dir; tracked **and** untracked state are compared before and after **every** command, including green ones; a success exit never overrides an undeclared write.
 *Depends on:* SC-04, SC-05, SC-06. Deliberately thin — it validates a manifest others populate.
+
+**Three guarantees added in v2.** A reviewer noted that splitting one gate into four cards can silently lose properties that only the *single* gate had, because they are properties of the composition rather than of any part. That is a correct structural objection and it applies here regardless of what the original design said. All three are cheap to state and all three are enforced *by the thin gate*, so none of them thickens SC-07 into the bundled card §1b argues against:
+
+1. **Joint consistency, not per-field validity.** The gate must verify that card revision, repo snapshot SHA and policy/adoption revision are mutually consistent *as one tuple* — that this card, at this HEAD, was validated under this policy revision. Four independently-valid fields drawn from three different moments is exactly the drift `process-adoption.json` already exhibits. Any field validated against a different snapshot than its siblings is a fail.
+2. **Freeze-to-dispatch atomic binding.** The manifest digest produced at freeze must be carried into the dispatch and re-checked at the dispatch boundary. Without this, the window between "gate passed" and "worker launched" is unguarded and the gate degrades into advice: freeze card A, dispatch card A′. The dispatch refuses to launch on any digest mismatch.
+3. **Complete enforcement at every entry point.** The gate must be unbypassable, which means enumerating the entry points — `codex exec` / the Agent route, `opencode` / `opencode2 run`, `claude-local -p`, `strong-card-runner`, and direct `t03_runner.py` invocation — and proving each one routes through it. A card of this plan's own SC-03 exists precisely because a guard covered four of five routes and was called enforcement. **Acceptance for SC-07 includes a per-entry-point bypass test, not a code-reading.**
+
+*Carries the SCI-013 invariant, strengthened in v2 per §1c.* Before/after comparison alone is insufficient — it misses write-then-restore and untracked-file mutation. The invariant is therefore:
+- retained proof is mounted **read-only**, so mutation fails at the OS rather than being detected after the fact — this is the primary control, and the comparison below is the backstop;
+- replay writes only to a controller-provided temp dir;
+- the before/after comparison covers **tracked and untracked** paths, by content digest over the full retained-proof tree — not `git status`, which cannot see an untracked-file rewrite that leaves no tracked delta;
+- the comparison also covers **mtime/inode**, so a write-then-restore that returns identical bytes is still caught;
+- the comparison runs after **every** command, including green ones;
+- a success exit never overrides an undeclared write, and an undeclared write is a gate failure, not a warning.
 
 ### Wave 3 — cheap and mutually parallel-safe, except SC-11
 
@@ -157,6 +216,14 @@ Cover `git worktree remove --force`, `git branch -D`, `git reset --hard`, `git c
 
 **SC-10 · DISPATCH-COST-TELEMETRY** — *effort M · risk LOW*
 Wire dispatch token/cost into the **existing** global Langfuse at `~/langfuse/` (new project inside the one instance — never a second stack). No comparative efficiency claim in this system is checkable without it, including the claims in this audit and in this plan.
+
+**SC-12 · ACCEPTANCE-AUTHORITY-AUTHENTICATION** — *effort M · risk **HIGH** · Builder*
+*Added in v2 — restores a disposition this synthesis had dropped silently (§1b).*
+Acceptance is currently caller-asserted. Make it authenticated and non-overwritable: `finish_attempt` authenticates the peer rather than accepting unauthenticated JSON; actor identity is supplied by the controller, never by the caller's own string; an `accepted` outcome requires a judge verdict plus proof references and becomes **terminal** — a coder cannot subsequently overwrite it via `retry` with an arbitrary verdict.
+*Verified:* `gpt-6-astra-xhigh.md:51` — a live in-memory probe accepted an attempt under a different actor with no judge verdict or proof, then let the original coder overwrite that outcome with `retry` and an arbitrary nonempty verdict; `can_retry()` returned true. The same-actor ACCEPT control correctly failed, so the narrow check works and the surrounding ledger is caller-trusting. The audit README independently records that the daemon's `finish_attempt` RPC "accepts JSON without authenticating the peer at all."
+*Why it is not folded into SC-07:* admission ("may this card freeze?") and acceptance authority ("who may declare this attempt accepted, and can they be impersonated?") are different boundaries at different lifecycle points. Merging them recreates the bundling problem §1b argues against.
+*Why HIGH risk:* this is the mechanism behind "coder ≠ grader ≠ breaker." While it is caller-trusted, **every acceptance record in the corpus is unauthenticated** — which also bounds how much SC-06's provenance work can be worth on its own.
+*Sequencing:* **Wave 1**, parallel-safe with SC-04/05/06 (disjoint files: the ledger/daemon path). SC-07's entry-point enforcement assumes it.
 
 **SC-11 · RULES-TRIM** — *effort S · risk LOW*
 2,224 lines / 26,732 words → under 1,200 lines. Move every `> **Why.**` block and every incident narrative to `runs/<id>/RETROSPECTIVE.md`; keep rule text.
@@ -172,7 +239,8 @@ Wave 0   SC-01 ──────────────┐   (blocking: no par
                              │
 Wave 1   SC-04 ─┐            │   (mutually parallel-safe: disjoint files)
          SC-05 ─┤            │
-         SC-06 ─┘────────────┤
+         SC-06 ─┤            │
+         SC-12 ─┘────────────┤   (v2: acceptance-authority auth; ledger/daemon path)
                              │
 Wave 2   SC-07 ←─────────────┘   (thin gate; consumes 04/05/06 outputs)
                              
@@ -204,6 +272,7 @@ Everything else is disjoint. SC-01 (Builder runtime) and SC-03 (hooks) are in di
 | SC-05 Controller-generated receipts | **L** | Med | WIP + Builder |
 | SC-06 Review provenance + persistence | M | Low | Builder + hooks |
 | SC-07 Admission gate | **L** | Med | WIP + Builder |
+| SC-12 Acceptance-authority authentication | M | **High** | Builder |
 | SC-08 Judge-protocol consolidation | S | Low | WIP |
 | SC-09 Delete-guard git hole | S | Med | hooks + WIP |
 | SC-10 Dispatch cost telemetry | M | Low | Builder |
