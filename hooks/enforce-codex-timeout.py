@@ -17,11 +17,95 @@ timeout+retry+scavenge pattern this enforces the first step of.
 from __future__ import annotations
 
 import json
-import re
+import os
+import shlex
 import sys
 
-CODEX_EXEC = re.compile(r"\bcodex exec\b")
-HAS_TIMEOUT = re.compile(r"\btimeout\s+\d")
+OPERATORS = {";", "&&", "||", "|", "&", "(", ")", "|&", "&&&", "\n"}
+KEYWORDS = {"then", "do", "else", "elif", "fi", "done", "{", "}", "!", "time"}
+WRAPPERS = {
+    "sudo", "doas", "env", "command", "nohup", "nice", "ionice",
+    "stdbuf", "builtin", "exec", "setsid", "timeout", "eval",
+}
+
+
+def command_segments(command: str) -> list[list[str]]:
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars="();<>|&\n")
+        lex.whitespace = " \t\r"
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        return []  # fail open, matching the other hooks
+
+    segments: list[list[str]] = []
+    current: list[str] = []
+    for token in tokens:
+        if token in OPERATORS or token in KEYWORDS:
+            if current:
+                segments.append(current)
+            current = []
+        else:
+            current.append(token)
+    if current:
+        segments.append(current)
+    return segments
+
+
+def skip_wrapper_options(words: list[str], index: int, wrapper: str) -> int:
+    options_with_value = {
+        "sudo": {"-u", "-g", "-h", "-p", "-C", "-T", "-R", "-D",
+                 "--user", "--group", "--host", "--prompt", "--chdir",
+                 "--chroot", "--role", "--type", "--other-user"},
+        "doas": {"-u", "-C"},
+        "env": {"-u", "-C", "-S", "--unset", "--chdir", "--split-string"},
+        "timeout": {"-s", "-k", "--signal", "--kill-after"},
+        "nice": {"-n", "--adjustment"},
+        "ionice": {"-c", "-n", "-t", "-u", "-P"},
+        "stdbuf": {"-i", "-o", "-e"},
+    }.get(wrapper, set())
+
+    while index < len(words) and words[index].startswith("-"):
+        option = words[index]
+        if option == "--":
+            return index + 1
+        bare_option = option.split("=", 1)[0]
+        index += 1
+        if bare_option in options_with_value and "=" not in option and index < len(words):
+            index += 1
+    return index
+
+
+def peel(words: list[str]) -> tuple[list[str], str, bool]:
+    """Strip assignments/wrappers and report whether timeout wrapped the command."""
+    index = 0
+    bounded = False
+    while index < len(words):
+        word = words[index]
+        if "=" in word and not word.startswith("=") and "/" not in word.split("=")[0]:
+            index += 1
+            continue
+        name = os.path.basename(word.lstrip("\\"))
+        if name not in WRAPPERS:
+            break
+        index += 1
+        index = skip_wrapper_options(words, index, name)
+        if name == "timeout":
+            bounded = True
+            if index < len(words) and not words[index].startswith("-"):
+                index += 1  # duration operand
+    argv = words[index:]
+    if not argv:
+        return [], "", bounded
+    return argv, os.path.basename(argv[0].lstrip("\\")), bounded
+
+
+def has_unbounded_codex_exec(command: str) -> bool:
+    for segment in command_segments(command):
+        argv, name, bounded = peel(segment)
+        if name == "codex" and "exec" in argv[1:] and not bounded:
+            return True
+    return False
 
 
 def main() -> int:
@@ -34,10 +118,8 @@ def main() -> int:
         return 0
 
     command = str((payload.get("tool_input") or {}).get("command", ""))
-    if not CODEX_EXEC.search(command):
+    if not has_unbounded_codex_exec(command):
         return 0
-    if HAS_TIMEOUT.search(command):
-        return 0  # already wrapped, fine
 
     print(
         "codex exec must be wrapped in a bounded timeout before this command can run -- "

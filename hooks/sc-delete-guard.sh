@@ -63,7 +63,7 @@ fi
 # Layer 2 — tokenized argv analysis.
 # ---------------------------------------------------------------------------
 PY_VERDICT=$(python3 - "$CMD" <<'PYEOF' 2>/dev/null
-import os, shlex, sys
+import os, shlex, subprocess, sys
 
 cmd = sys.argv[1]
 
@@ -124,6 +124,71 @@ def peel(words):
     if not argv:
         return [], ""
     return argv, os.path.basename(argv[0].lstrip("\\"))
+
+def git_result(worktree, *args):
+    """Run a bounded, read-only git query in worktree."""
+    try:
+        return subprocess.run(
+            ["git", *args], cwd=worktree, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            timeout=5, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+def existing_worktree(path):
+    """Resolve path only when it is the root of a live Git worktree."""
+    resolved = os.path.realpath(os.path.abspath(os.path.expanduser(path)))
+    if not os.path.isdir(resolved):
+        return None
+    inside = git_result(resolved, "rev-parse", "--is-inside-work-tree")
+    top = git_result(resolved, "rev-parse", "--show-toplevel")
+    if not inside or inside.returncode != 0 or inside.stdout.strip() != "true":
+        return None
+    if not top or top.returncode != 0:
+        return None
+    if os.path.realpath(top.stdout.strip()) != resolved:
+        return None
+    return resolved
+
+def worktree_is_clean_and_merged(worktree):
+    status = git_result(worktree, "status", "--porcelain", "--untracked-files=all")
+    clean = bool(status and status.returncode == 0 and not status.stdout.strip())
+
+    # A removable card worktree is merged only when HEAD is already reachable
+    # from the project's integration ref. Prefer local main/master; origin/HEAD
+    # is a fallback when the repository exposes its default branch only there.
+    refs = []
+    for ref in ("refs/heads/main", "refs/heads/master"):
+        probe = git_result(worktree, "show-ref", "--verify", "--quiet", ref)
+        if probe and probe.returncode == 0:
+            refs.append(ref)
+    if not refs:
+        remote_head = git_result(
+            worktree, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"
+        )
+        if remote_head and remote_head.returncode == 0 and remote_head.stdout.strip():
+            refs.append(remote_head.stdout.strip())
+
+    merged = False
+    for ref in refs:
+        ancestry = git_result(worktree, "merge-base", "--is-ancestor", "HEAD", ref)
+        if ancestry and ancestry.returncode == 0:
+            merged = True
+            break
+    return clean, merged
+
+def positional_args(args):
+    """Return operands after stripping flags, respecting `--`."""
+    operands, after_separator = [], False
+    for arg in args:
+        if not after_separator and arg == "--":
+            after_separator = True
+        elif not after_separator and arg.startswith("-"):
+            continue
+        else:
+            operands.append(arg)
+    return operands
 
 GLOB = set("*?[")
 
@@ -187,12 +252,57 @@ for words in segments:
     if name == "truncate":
         fail("`truncate` zeroes a file, which is deletion of its contents", "")
 
-    # ---- git clean ----
+    # ---- destructive git operations ----
     if name == "git":
         sub = [a for a in argv[1:] if not a.startswith("-")]
-        if sub and sub[0] == "clean":
+        if not sub:
+            continue
+        git_sub = sub[0]
+        sub_idx = argv.index(git_sub, 1)
+        args = argv[sub_idx + 1:]
+
+        if git_sub == "clean":
             fail("`git clean` deletes untracked files with no recovery path",
                  "Use `git status --porcelain` to list them, then sc-trash.sh.")
+
+        if git_sub == "branch":
+            force_delete = "-D" in args or (
+                "--delete" in args and "--force" in args
+            )
+            if force_delete:
+                fail("`git branch -D` force-deletes a branch with no recovery path",
+                     "Use `git branch` without `-D`, or get explicit user confirmation of the loss.")
+
+        if git_sub == "reset" and "--hard" in args:
+            fail("`git reset --hard` irrecoverably discards uncommitted changes",
+                 "Use `git stash` or `git reset --soft`/`--mixed`, or get explicit user confirmation.")
+
+        if git_sub == "checkout" and "--" in args:
+            separator = args.index("--")
+            if args[separator + 1:]:
+                fail("`git checkout -- <path>` irrecoverably discards uncommitted path changes",
+                     "Use `git stash` first, or get explicit user confirmation of the loss.")
+
+        if git_sub == "restore" and "--staged" not in args and positional_args(args):
+            fail("`git restore <path>` irrecoverably discards uncommitted path changes",
+                 "Use `git stash` first, or get explicit user confirmation of the loss.")
+
+        if git_sub == "stash":
+            stash_ops = positional_args(args)
+            if stash_ops and stash_ops[0] in ("drop", "clear"):
+                fail("`git stash %s` permanently deletes stashed work with no recovery path" % stash_ops[0],
+                     "Use `git stash list` first, or get explicit user confirmation of the loss.")
+
+        if git_sub == "worktree":
+            worktree_ops = positional_args(args)
+            if worktree_ops and worktree_ops[0] == "remove" and len(worktree_ops) > 1:
+                target = existing_worktree(worktree_ops[-1])
+                if target:
+                    clean, merged = worktree_is_clean_and_merged(target)
+                    if not (clean and merged):
+                        state = "dirty" if not clean else "clean but not merged into main/master"
+                        fail("`git worktree remove` target is not clean and merged (%s)" % state,
+                             "Move uncommitted content first with sibling `./sc-trash.sh <path>`; otherwise only the user should re-run after clearly confirming the loss.")
 
     # ---- find ... -delete / -exec rm / -ok rm ----
     if name in ("find", "fd"):
