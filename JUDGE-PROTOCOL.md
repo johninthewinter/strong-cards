@@ -1,5 +1,11 @@
 # JUDGE-PROTOCOL
 
+**Single source of truth for the judge protocol.** Any verdict value, judge role, judge
+eligibility rule, or review risk-tier rule defined anywhere else in this repo — including
+the doctrine summary in `RULES.md` §1 and prose left in `RULES.md` §4 — defers to this
+document. If another file disagrees with it, this document wins; the other file must be
+corrected or marked superseded.
+
 Two judge roles. Different models, different triggers, different outputs. They are not
 interchangeable and neither is optional.
 
@@ -14,6 +20,86 @@ interchangeable and neither is optional.
 
 Doctrine constraint on both: **coder ≠ grader ≠ breaker** (§1.5). The judge is never the
 model that wrote the code, and never the session's own optimistic read of its own dispatch.
+
+---
+
+## 0. Verdict table — the one authoritative definition
+
+Every verdict a judge, reviewer, or controller can render in this system, who may render
+it, and under what condition. No verdict outside this table is valid; no name here is
+invented — each already exists in this repo's doctrine (`RULES.md`), templates, or review
+history.
+
+### 0.1 Card-lifecycle verdicts (controller-rendered, deterministic)
+
+| Verdict | Who may render | Condition |
+|---|---|---|
+| `ACCEPT` | Controller only (deterministic call, RULES §1.4) | CONFIRM × BREAK both pass, gated by FIT (§1.5); all acceptance criteria independently verified (RULES §5) |
+| `RETRY` | Controller, acting on a judge's diagnosis | Judge found a card defect (scope, ambiguity, stale refs, missing second site) and produced a concrete card edit or split; re-dispatch against the corrected card in a fresh worktree (§1.6) |
+| `STOP` | Controller | Inexorable assumption violated — a shape was named without being read (RULES §1.6); or a forbidden routing/key situation appears (RULES §9.2) |
+| `INVALID_CARD` | Judge (either lane, see §0.3) or worker self-report (honored, never forced through) | The card itself is defective: false premise, self-contradiction between Fix and scope fence (RULES 12.8), unresolvable ambiguity, or the anti-oscillation trigger below (§0.4) |
+
+### 0.2 Review-lane verdicts (reviewer-rendered)
+
+| Verdict | Lane | Who may render | Condition |
+|---|---|---|---|
+| `PASS` | BREAK / adversarial review | Independent sandboxed adversary (breaker), off-vendor from coder (§0.5) | Attempted to make the card fail; found nothing that breaks it |
+| `REMEDIATE` | BREAK / adversarial review | Same as above | Found a real, reproducible defect; names it with evidence |
+| `NEEDS-FIX` | docs/plan/ review | Card reviewer | Draft plan/card has fixable defects before freeze |
+| `ACCEPT` | docs/plan/ review | Card reviewer | Draft conforms; may freeze |
+| `REJECT` | docs/plan/ review | Card reviewer | Draft does not conform and cannot be fixed in place — split required (e.g. "REJECT-and-split", phase0 plan review) |
+| `CONFORMS` / `NEEDS-CHANGE` | docs/plan/ batch review | Plan reviewer | Per-card conformance verdict across an un-dispatched plan (phase0 plan review) |
+| `FIT` / `NO_FIT` | FIT gate | Exactly one judge (Role 1) | Does the change fit the system (doctrine §1.7)? One judge decides; it gates CONFIRM × BREAK |
+| `PASS` / `FAIL` | Visual-verification gate (UI cards) | Vision-capable model or card owner live | Bounded checklist grading of captured screenshots/clips (RULES §18); parallel to BREAK, gated by FIT |
+
+Notes:
+- `INVALID_CARD` is now a valid verdict in **both** lanes: the docs/plan/ lane (where it
+  already existed in practice) and the BREAK lane (§0.3).
+- Worker self-reports of `INVALID_CARD` (blocked, ambiguous, or code-doesn't-match-Defect —
+  CARD-TEMPLATE Acceptance) are honored, never fought; they route to the judge for
+  confirmation, they do not self-execute.
+- A review packet built on a controller error (empty/incomplete diff, RULES §3.3a) produces
+  **no** verdict — discard and regenerate; it is not a RETRY.
+
+### 0.3 INVALID_CARD in the BREAK lane
+
+`INVALID_CARD` is a valid BREAK-lane verdict, not just a docs/plan/-lane one. The breaker or
+judge rendering it states which premise of the card is false or contradictory, with the
+evidence that disproves it. This closes the asymmetry observed in the 2026-09-15 audit:
+the docs/plan/ lane used `INVALID_CARD` freely and productively while the BREAK lane had no
+documented exit and oscillated instead (SC-BLD-R03: five rounds, terminal double-REMEDIATE).
+
+### 0.4 Anti-oscillation rule (hard)
+
+**2 consecutive non-converging review rounds on the same card = `INVALID_CARD`.**
+
+A round is *non-converging* when its reviewers' verdicts do not agree with each other or
+move away from the prior round's consensus (e.g. r2 PASS/REMEDIATE after r1 PASS/PASS, or
+r4/r5 both REMEDIATE after mixed rounds). The moment two such rounds land back-to-back, the
+card exits as `INVALID_CARD` — it is redrafted or split, not re-reviewed a third time. A
+card that bounced five rounds without converging should have exited at round 2 instead;
+buying extra rounds against a non-converging card is a process defect, not diligence.
+
+### 0.5 Judge eligibility: off-vendor
+
+The judge role must be **off-vendor from the coder AND off-vendor from the BREAK
+reviewer(s)** — not the same LLM vendor as either. "Coder ≠ grader ≠ breaker" satisfied by
+name alone (four distinct model flavors of one vendor) satisfies independence at none: the
+judge is the single point that converts correlated opinions into one verdict, so same-vendor
+correlation defeats it. When selecting the judge, check the vendor of every actor that has
+already touched the card this round — coder, breaker(s), and any prior-round reviewer whose
+report feeds the judgment — and pick a judge from a different vendor than all of them.
+
+### 0.6 Review risk tier: mechanical property predicate
+
+Review risk tier is decided by a **mechanical property predicate**, never by file count or
+line count. Predicate: scan the card's **Gates section** for the keywords
+`auth`, `isolation`, `concurrency`, `deletion`, `migration`, `irreversible-state`.
+Any hit raises the card to the higher-risk review tier (retained independent adversarial
+perspectives, proof-backed BREAK fixtures per RULES §22); zero hits leaves it at the
+ordinary tier. File count, token count, and a green prose review never override this rule
+(RULES §22): a one-file card containing two adversarial boundaries is high-risk, and a
+large card touching none of these properties is not.
 
 ---
 

@@ -22,8 +22,8 @@ is earned, never self-reported.*
 1. **Play the whole board — grand-ensemble first.** Before: does it belong, fit the system, serve the plan? After: does it work WITH the other pieces — no orphan, no spaghetti, no drift? **System coherence outranks local correctness.** Before any cut / rename / decommission, sweep every consumer first (grep what `@include`s / sources / imports / names it).
 2. **Right piece, right square, right purpose.** Good model, good place, good purpose. Minimum force when it wins, heavier when the position demands — **size follows need, never habit.**
 3. **Judgment before the loop.** Map blast radius + seams; resolve architecture *outside* the worker. Verify production state before naming prod shapes.
-4. **A bounded move is a Strong Card** `SC=(I,O,S,B,G,R,E)` — validated, then **frozen & hashed before coding.** The `ACCEPT | RETRY | STOP | INVALID_CARD` call is the controller's (deterministic), never the model's.
-5. **Green = proven AND unbroken.** Acceptance = **CONFIRM × BREAK, gated by FIT.** CONFIRM = a cost-ordered gauntlet (Tier 0 deterministic $0: lint / type / stub-scan / tests+gherkin / coverage / mutation → peer → stronger model → MoM, escalate only on failure). BREAK = an independent, sandboxed adversary told to *make the card fail*. FIT = one judge returns FIT / NO_FIT. **Coder ≠ grader ≠ breaker.** Worker self-report is never acceptance evidence.
+4. **A bounded move is a Strong Card** `SC=(I,O,S,B,G,R,E)` — validated, then **frozen & hashed before coding.** The `ACCEPT | RETRY | STOP | INVALID_CARD` call is the controller's (deterministic), never the model's. *(Verdict definitions, per-verdict renderers, eligibility rules: `JUDGE-PROTOCOL.md` §0 — single source of truth.)*
+5. **Green = proven AND unbroken.** Acceptance = **CONFIRM × BREAK, gated by FIT.** CONFIRM = a cost-ordered gauntlet (Tier 0 deterministic $0: lint / type / stub-scan / tests+gherkin / coverage / mutation → peer → stronger model → MoM, escalate only on failure). BREAK = an independent, sandboxed adversary told to *make the card fail*. FIT = one judge returns FIT / NO_FIT. **Coder ≠ grader ≠ breaker** — and the judge must be off-vendor from both coder and BREAK reviewer (`JUDGE-PROTOCOL.md` §0.5). Worker self-report is never acceptance evidence.
 6. **Never assume; state the inexorable assumption.** Naming a shape — code, path, product capability, dependency — without reading it = STOP and verify. `INVALID_CARD` is honorable.
 7. **Fit, not size — the anti-spaghetti law.** Cut what doesn't serve; keep/add what does. Never cut to look lean, never add to look thorough. Burden of proof is on the cut.
 8. **No stub unless intended; no silent tech debt; surgical.** Every changed line traces to the request. Scope grows mid-flight → surface the full cost, don't ship "minimum + defer."
@@ -451,6 +451,12 @@ on `main` after the fact.
 
 ## §4 — Judge on fail, always, before any retry
 
+> **Scope note (SC-08).** This section keeps the operational *procedure* of judging a failed
+> card (when to run it, what evidence it gets, how to act after). The *definitions* of
+> verdicts, judge roles, and eligibility rules now live in `JUDGE-PROTOCOL.md` §0 — the
+> single source of truth for the judge protocol. Where this section or §1 names a verdict,
+> role, or eligibility rule, `JUDGE-PROTOCOL.md` wins on any conflict.
+
 **RULE 4.1 — A card that fails its first attempt goes to a judge before it is re-dispatched.**
 Sonnet, low reasoning effort, reading: the full card, the failure/stall transcript, and any
 independent verification already performed. Never blind-retry. Never "just try again with a
@@ -495,6 +501,12 @@ doesn't match the diff) rather than only when the diff itself looks wrong. This 
 to failures with an unambiguous diff-level cause (e.g. a clean assertion mismatch) — reading
 the play-by-play adds cost without changing the verdict there; reserve it for cases where *why*
 the worker did what it did is itself the open question.
+
+**RULE 4.6a — Judge eligibility: off-vendor from both the coder and the BREAK reviewer(s).**
+The judge must not be the same LLM vendor as the coder or as any BREAK reviewer whose report
+feeds its judgment; "coder ≠ grader ≠ breaker" satisfied by name alone (distinct model
+flavors of one vendor) satisfies independence at none. Full rule, including how to check it
+at selection time: `JUDGE-PROTOCOL.md` §0.5.
 
 **RULE 4.6 — Never dispatch a judge against a worktree the coder is still running in.**
 A judge reads whatever is on disk at the moment it looks; if the coder is mid-run, that is a
