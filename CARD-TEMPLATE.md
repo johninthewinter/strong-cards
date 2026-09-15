@@ -4,6 +4,12 @@ Copy this per card into `.audit-scratch/cards/<ID>-<slug>.md`. The shape below i
 that closed 20 base cards + 11 sub/recovery cards in the 2026-08 nukegraph run — it is not
 a proposal, it is the shape that worked.
 
+New cards must use exactly `# <ID> — <one-line imperative title>` for the H1, with an em
+dash (U+2014) as the separator, and exactly `## Touch List (only these files)` for the Touch
+List heading. Do not use colon-separated H1s or suffix-parenthesized Touch List headings for
+new cards; the ingestion parser tolerates those alternate forms for legacy-card compatibility
+only.
+
 **Before you write the card, do the grounding investigation.** Read the real code. Every
 `Defect` claim below must quote current code at a current line number. A card written from
 the plan document alone, without reading the file, is how you get "stale line refs" — the
@@ -12,11 +18,14 @@ single most common judge finding (RULES §4.2).
 **Freeze the card before dispatching** (doctrine §1.4). Edits after dispatch are a new
 attempt, not the same attempt.
 
-## Construction packet required before drafting
+## Construction packet required only when the property predicate fires
 
-Run `CONSTRUCTION-PROTOCOL.md` PB0-PB10 before BREAK. The controller supplies the packet and
-all authoritative receipts; the drafter never receives the accumulated chat/run archive by
-default. An uncovered obligation, untraced effect, missing predicate mutant, unresolved
+Run `CONSTRUCTION-PROTOCOL.md` PB0-PB10 before BREAK only when a card's Gates section text
+contains any keyword from `auth/isolation/concurrency/deletion/migration/irreversible-state`.
+This is a mechanical property predicate, not a file-count threshold. The Construction packet
+is optional when the predicate does not fire. When it does, the controller supplies the packet
+and all authoritative receipts; the drafter never receives the accumulated chat/run archive
+by default. An uncovered obligation, untraced effect, missing predicate mutant, unresolved
 contradiction or over-budget mandatory packet blocks drafting or forces a split.
 
 ---
@@ -25,6 +34,10 @@ contradiction or over-budget mandatory packet blocks drafting or forces a split.
 # <ID> — <one-line imperative title>
 
 ## Construction packet
+Required only when the card's Gates section text contains any keyword from
+`auth/isolation/concurrency/deletion/migration/irreversible-state`; optional otherwise and
+may be omitted.
+
 - Packet ID / revision / SHA-256: `<...>`
 - Baseline / policy manifest / owner scope: `<...>`
 - Bounded source and fact IDs: `<...>`
@@ -259,7 +272,10 @@ fix, do not widen scope to make something pass, do not delete a failing test.
 
 ## Reviewer checklist before dispatch
 
-- [ ] PB0-PB10 passed against the final packet/card/gate digests; the review seal is not a coding freeze.
+- [ ] The property predicate was evaluated mechanically: when the card's Gates section text
+      contains any keyword from `auth/isolation/concurrency/deletion/migration/irreversible-state`,
+      PB0-PB10 passed against the final packet/card/gate digests; otherwise the Construction
+      packet is optional. The review seal is not a coding freeze.
 - [ ] Every parent/new/inherited obligation resolves through read/write/predicate/rollback/preservation ledgers to named tests and proof receipts.
 - [ ] Every critical predicate has a one-change invalid fixture, restored control and implementation mutant that fails its intended assertion.
 - [ ] Whole-effect rejection snapshots, success allowed-delta checks, retry and unrelated sentinels cover every consequential branch and inherited guard.
