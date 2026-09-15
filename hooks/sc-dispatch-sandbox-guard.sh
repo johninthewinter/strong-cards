@@ -9,28 +9,71 @@
 # entire working tree. It left its 2-file touch list and deleted a shipped, SIGKILL-tested
 # production module. Nothing was revertable — the tree was untracked.
 #
-# Two dispatch shapes are supported, because they express the sandbox boundary differently:
+# Four dispatch shapes are supported, because they express the sandbox boundary differently:
 #   - opencode: a `--dir`/`--cwd` FLAG on the dispatch command itself.
 #   - pi (2026-08-11 onward, RULES §9): pi has NO --dir/--cwd flag at all (confirmed against
 #     `pi --help`). Its cwd is whatever the shell was in when it ran — either a `cd <path> &&`
 #     prefix in the SAME command, or (if the operator already `cd`'d in an earlier call) the
 #     PreToolUse hook's own `.cwd` field. Both are checked below.
+#   - sbx (2026-09-11 onward): opencode2 has NO --dir/--cwd flag at all (confirmed against
+#     `opencode2 run --help`, v0.0.0-beta-19234 — its positionals are the MESSAGE). When the
+#     dispatch goes through `sbx exec`, the container's mount IS the boundary — strictly
+#     stronger than a --dir flag, since it's a whole separate filesystem namespace, not just
+#     a working-directory pointer — and `-w/--workdir` names it.
+#   - codex (2026-09-15 onward, SC-03): `codex exec` is the dispatch route the codex-gpt
+#     Agent actually uses, and it was unguarded until now. Per the resolved -C rule
+#     (see ~/.claude/agents/codex-gpt.md), the operator EnterWorktree's first and codex
+#     inherits that cwd with NO path flag — so the hook's own `.cwd` is the boundary.
+#     A `-C`/`--cd` flag, if one is passed anyway, is honoured as the stated directory,
+#     but is never TRUSTED: whichever directory we end up with is verified below against
+#     `--absolute-git-dir` vs `--git-common-dir` — a real linked-worktree test, not a
+#     claim in the command string.
 
 set -uo pipefail
 
 INPUT=$(cat)
-command -v jq >/dev/null 2>&1 || exit 0   # no jq: fail open, never wedge the session
+
+# --- fail CLOSED on a missing dependency (SC-03) --------------------------------
+# Without jq we cannot parse .tool_input.command, so we cannot tell a dispatch from a
+# plain `ls`. Exiting 0 here (the pre-2026-09-15 behaviour) silently disabled the guard
+# for every dispatch. Exiting 2 unconditionally would wedge EVERY Bash call on the
+# machine. So: degrade to a raw-text scan of the hook payload and block anything that
+# looks like a dispatch, with an explicit reason. Unguardable dispatches are refused;
+# ordinary commands still run.
+if ! command -v jq >/dev/null 2>&1; then
+  case "$INPUT" in
+    *"opencode run"*|*"opencode2 run"*|*"claude-local -p"*|*"strong-card-runner"*|\
+    *"pi -p"*|*"pi --print"*|*"codex exec"*)
+      printf 'STRONG CARD SANDBOX GUARD — dispatch blocked (RULES §3).\n\n%s\n' \
+        "\`jq\` is not on PATH, so this hook cannot parse the tool payload and cannot verify
+that this dispatch targets a dedicated git worktree. The guard fails CLOSED: an
+unverifiable dispatch is refused rather than silently permitted.
+
+Fix: install jq (\`brew install jq\`), then re-run the dispatch." >&2
+      exit 2 ;;
+    *) exit 0 ;;
+  esac
+fi
 
 CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
 [ -n "$CMD" ] || exit 0
 
 # Is this a coder dispatch? Extend this pattern for other harnesses.
 IS_PI=0
+IS_SBX=0
+IS_CODEX=0
 case "$CMD" in
   *"opencode run"*|*"opencode2 run"*|*"claude-local -p"*|*"strong-card-runner"*) ;;
   *"pi -p"*|*"pi --print"*) IS_PI=1 ;;
+  *"codex exec"*) IS_CODEX=1 ;;
   *) exit 0 ;;
 esac
+
+# Containerised dispatch (sbx): `opencode2 run` has NO --dir/--cwd flag at all
+# (confirmed against `opencode2 run --help`, v0.0.0-beta-19234 — its positionals are
+# the MESSAGE). When the dispatch goes through `sbx exec`, the sandbox mount is the
+# boundary, and `-w/--workdir` names the directory the worker runs in.
+case "$CMD" in *"sbx exec"*) IS_SBX=1 ;; esac
 
 # Read-only / help invocations are not dispatches.
 case "$CMD" in *" --help"*|*" -h "*|*"--list-models"*|*"--version"*|*" -v "*) exit 0 ;; esac
@@ -48,6 +91,13 @@ Required shape:
   # pi (no --dir flag — the cwd IS the boundary, so cd into it explicitly):
   cd ../.wt/card-<slug> && pi -p "$(cat <card-file>)" --provider <name> --model <id>
 
+  # sbx (containerised — opencode2 has no --dir flag either):
+  sbx exec -w /abs/path/to/worktree <sandbox> opencode2 run --model <id> "..."
+
+  # codex (no -C — EnterWorktree into the worktree first; the inherited cwd IS the
+  # boundary, and this guard verifies it is a real linked worktree):
+  codex exec -m <model-id> -c model_reasoning_effort=<effort> --sandbox workspace-write "..."
+
 Then BEFORE merging, review the whole tree, not just the expected files:
 
   git -C ../.wt/card-<slug> status --porcelain   # deletions + untracked
@@ -63,7 +113,47 @@ EOF
 
 HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 
-if [ "$IS_PI" = "1" ]; then
+if [ "$IS_SBX" = "1" ]; then
+  # opencode2 has no --dir/--cwd flag at all. Through `sbx exec`, the container's mount
+  # IS the boundary (strictly stronger than a --dir flag: a whole separate filesystem
+  # namespace, not just a working-directory pointer) — `-w/--workdir` names it.
+  DIR=$(printf '%s' "$CMD" \
+    | grep -oE -- '(-w|--workdir)[= ]+("[^"]+"|'"'"'[^'"'"']+'"'"'|[^[:space:]]+)' \
+    | head -n1 | sed -E 's/^(-w|--workdir)[= ]+//' | tr -d "\"'")
+  # A --dir flag (opencode v1 inside the sandbox) is equally valid.
+  [ -n "$DIR" ] || DIR=$(printf '%s' "$CMD" \
+    | grep -oE -- '--(dir|cwd)[= ]+("[^"]+"|'"'"'[^'"'"']+'"'"'|[^[:space:]]+)' \
+    | head -n1 | sed -E 's/^--(dir|cwd)[= ]+//' | tr -d "\"'")
+  [ -n "$DIR" ] || block "sbx dispatch declares neither -w/--workdir nor --dir, so the worker
+runs in the container's default cwd rather than in the mounted worktree. Launch it as:
+  sbx exec -w /abs/path/to/worktree <sandbox> opencode2 run --model <id> \"...\""
+elif [ "$IS_CODEX" = "1" ]; then
+  # codex exec. Standing rule: no -C — EnterWorktree first, inherit the cwd. So the
+  # hook's own .cwd is normally the boundary. A leading `cd <path> &&`, or a -C/--cd
+  # flag if one is passed anyway, names it instead. Whatever we resolve is VERIFIED
+  # below as a real linked worktree; nothing here is taken on trust.
+  # Only scan the argv AFTER `codex exec`, and tokenize it the way a shell would
+  # (`xargs -n1` honours quoting), so the PROMPT collapses into a single token and a
+  # `git -C <path>` written inside that prompt cannot be mistaken for codex's own
+  # directory flag. Malformed quoting yields no token list — DIR stays empty and we
+  # fall through to the cwd, which is still verified below.
+  CODEX_TAIL=${CMD#*codex exec}
+  DIR=$(printf '%s' "$CODEX_TAIL" | xargs -n1 2>/dev/null | awk '
+    /^(-C|--cd)$/            { take=1; next }
+    take                     { print; exit }
+    /^(-C|--cd)=/            { sub(/^(-C|--cd)=/, ""); print; exit }
+  ')
+  [ -n "$DIR" ] || DIR=$(printf '%s' "$CMD" \
+    | grep -oE '^[[:space:]]*cd[[:space:]]+("[^"]+"|'"'"'[^'"'"']+'"'"'|[^[:space:]&;]+)' \
+    | head -n1 | sed -E 's/^[[:space:]]*cd[[:space:]]+//' | tr -d "\"'")
+  if [ -z "$DIR" ]; then
+    DIR="$HOOK_CWD"
+    [ -n "$DIR" ] || block "codex exec dispatch: the hook could not read a cwd, and the command
+names no directory either, so the worktree this worker will write in is unknowable.
+EnterWorktree into a dedicated worktree first, then dispatch:
+  codex exec -m <model> --sandbox workspace-write \"...\"   # no -C, cwd is the boundary"
+  fi
+elif [ "$IS_PI" = "1" ]; then
   # pi has no --dir flag. The boundary is whatever directory it actually runs in: a `cd
   # <path> &&`/`cd <path>;` prefix in this same command, or (if absent) the hook's own cwd —
   # which is only safe when the operator already `cd`'d into the worktree in a PRIOR call.
