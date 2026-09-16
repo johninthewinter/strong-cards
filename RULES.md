@@ -264,7 +264,7 @@ onto current trunk) without the multi-step conflict-resolution surface rebase ex
 of which may be blocked by tooling the controller does not control. Reserve `git rebase` for
 cases with genuine multi-commit history that must be replayed commit-by-commit; default to
 cherry-pick-onto-fresh-branch for the common one-commit-dispatch case. When cherry-picking,
-verify by content, not just by commit message — RULE 14.x's general "verify the structural
+verify by content, not just by commit message — RULE 14.2's general "verify the structural
 fact" applies here too: a shared commit message across unrelated cards is not proof of
 shared content (P6-06's cherry-pick target shared a message with an older, superseded
 version of unrelated card P7-05; the diff had to be checked, not just the subject line).
@@ -407,19 +407,12 @@ different cards/workers because the same flawed procedure ran five times.
 git worktree add ../.wt/card-<slug> -b card/<slug>
 cp CARD.md ../.wt/card-<slug>/CARD.md        # copy only — no git add, no git commit
 ```
-The worker still has the card text on disk at the same path it always did; nothing about the
-worker's experience changes. What changes is that `CARD.md` now sits in the worktree exactly like
-a `.venv` or any other gitignored/untracked provisioning artifact (§3.7.1's own category) — `git
-status --porcelain` will show it as `??`, `git diff --stat` will never mention it, and `git merge
-card/<slug>` has nothing to pull in because it was never on the branch. This is strictly better
-than option (b) (worktree-local `.git/info/exclude`) or option (c) (a mandatory pre-merge `git rm`
-step): (b) still requires the operator to remember a second provisioning step and only suppresses
-*accidental* re-adds, it does nothing about the procedure that already, deliberately, commits the
-file; (c) keeps the defect commit in the branch and bolts on a manual cleanup step at exactly the
-seam that already failed five times in a row — a step that must be remembered and run correctly
-every single time is not a fix, it is the same failure mode restated as a checklist item. Making
-the file untracked removes the leak path structurally: there is no branch history containing
-`CARD.md` for a `--no-edit` merge to ever pull in, so there is nothing left to remember.
+The worker still reads the same card path, but `CARD.md` is now untracked (§3.7.1):
+`git status --porcelain` shows `??` unless excluded, `git diff --stat` omits it, and
+`git merge card/<slug>` cannot pull it in. Option (b), a `.git/info/exclude` entry alone,
+only prevents accidental adds; it cannot undo the provisioning procedure's deliberate commit.
+Option (c), a mandatory pre-merge `git rm`, retains that commit and depends on cleanup at the
+same seam that failed five times. Untracked provisioning removes the leak from branch history.
 
 **Belt-and-suspenders, not a substitute for the above:** also add a `CARD.md` line to the
 worktree's `.git/info/exclude` at provisioning time (worktree-local, not the repo's committed
@@ -652,22 +645,11 @@ the final report is not equivalent to having taken it.
 > this rule exists because "check the file exists" is easy to skip when the rest of the
 > report reads as confident and the diagnosis-flavored parts sound plausible.
 >
-> **Second confirmed occurrence, Pi Broker specifically (P0-10, 2026-08-12,
-> nukegraph_langgraph).** A worker dispatched via the Pi Broker (local Qwen model) ran the
-> exact canonical suite command inside its own interactive session and reported "583 passed,
-> 14 failed (all pre-existing)." The operator re-ran the *identical* command in a clean,
-> non-interactive shell against the *same* worktree, moments later: "683 passed, 1 failed" —
-> the 1 being the same known pre-existing golden-diff fixture from RULE 5.2's P0-18 entry
-> above, independently confirmed pre-existing multiple times this session. Same command,
-> same worktree, wildly different result (100-test undercount, 13 phantom failures) — the
-> divergence is not explainable by flakiness alone at that magnitude, and points at the
-> dispatch harness's own execution environment (stale `__pycache__`/`.pyc` from the session's
-> earlier iterations, or resource contention with the local model server itself competing for
-> CPU/memory during a 600s test run) rather than the code under test. This is the second time
-> this session a worker's self-reported suite result was wrong, and the second time an
-> independent clean re-run was the only thing that caught it — hence RULE 5.4 above now
-> states explicitly that a dispatch-session-internal test run is not a substitute for a clean
-> re-run, regardless of how closely its command matches the canonical one.
+> **Second occurrence, Pi Broker (P0-10, 2026-08-12, nukegraph_langgraph).** Worker reported
+> "583 passed, 14 failed (all pre-existing)"; the operator's clean-shell re-run on the same
+> worktree, same command, moments later: "683 passed, 1 failed" (the known baseline golden-diff
+> failure). The 100-test undercount and 13 phantom failures prompted RULE 5.4's clean-re-run
+> clause; a matching command alone did not establish a matching result.
 >
 > **Correction, 4/4 pattern now confirmed, local-Qwen-specific (P0-18, P0-10, P0-19, P0-20,
 > 2026-08-12, nukegraph_langgraph).** The earlier line above — "small/local models are not
@@ -733,30 +715,30 @@ the final report is not equivalent to having taken it.
 > presence), a judge/operator must read that content directly and compare it against the exact
 > string/assertion the card requires, before crediting the criterion.**
 >
-> **RULE 5.7 — a worker's own "N tests pass" is scoped to the tests it chose to run, and
-> that scope is exactly where a real cross-file regression hides (P0-16, 2026-08-12,
-> nukegraph_langgraph).** Local-Qwen completed P0-16 (a correct, approved-design fix: emit a
-> `CustomRegion` when a node's impl is a compiled subgraph), self-reported "all 51 tests
-> pass" — true, but the 51 were only `test_pipeline.py` + `test_corpus_invariants.py`, the
-> two files nearest the diff. The operator's independent full-suite run (mandatory per RULE
-> 5.4, never skip it because a narrower self-report looked clean) found 2 failures in a THIRD
-> file the worker never touched or ran: `test_demo_gate_real_repo.py`. Root cause: the new,
-> correct `CustomRegion` on one node (`research_supervisor`) tripped an existing, unrelated
-> gate (`transaction.py`'s `_CUSTOM_REGION_LOCKS`, graph-scoped not node-scoped) that then
-> refused an operation on a *different* node (`final_report_generation`) in the same graph —
-> a genuine emergent interaction between a correct fix and a pre-existing, un-related design
-> gap, invisible from inside either file alone. A Sonnet judge traced the actual gate code
-> (not just the failure message), confirmed the fix itself was correct, confirmed a
-> plausible-looking hypothesis in the failure context was WRONG (the obvious "P0-29 will fix
-> this" assumption did not hold — P0-29's own Touch List never touches the actual culprit
-> lines, confirmed by direct read, not by trusting the ordering rationale), and recommended
-> widening the card's scope to fix the two newly-red assertions (updating their expected
-> outcome to match new, correct behavior — not silencing or skipping them) plus filing a new,
-> separate sibling card for the actual gate-granularity gap. **Lesson: "the worker's chosen
-> test scope passed" is not "the fix is safe" — always run the FULL suite yourself before
-> merging, exactly as RULE 5.4 already says, and when it turns up a failure outside the
-> worker's Touch List, don't assume the nearest-sounding already-planned future card covers
-> it; read that other card's actual Touch List before relying on it for sequencing.**
+**RULE 5.7 — a worker's own "N tests pass" is scoped to the tests it chose to run, and
+that scope is exactly where a real cross-file regression hides (P0-16, 2026-08-12,
+nukegraph_langgraph).** Local-Qwen completed P0-16 (a correct, approved-design fix: emit a
+`CustomRegion` when a node's impl is a compiled subgraph), self-reported "all 51 tests
+pass" — true, but the 51 were only `test_pipeline.py` + `test_corpus_invariants.py`, the
+two files nearest the diff. The operator's independent full-suite run (mandatory per RULE
+5.4, never skip it because a narrower self-report looked clean) found 2 failures in a THIRD
+file the worker never touched or ran: `test_demo_gate_real_repo.py`. Root cause: the new,
+correct `CustomRegion` on one node (`research_supervisor`) tripped an existing, unrelated
+gate (`transaction.py`'s `_CUSTOM_REGION_LOCKS`, graph-scoped not node-scoped) that then
+refused an operation on a *different* node (`final_report_generation`) in the same graph —
+a genuine emergent interaction between a correct fix and a pre-existing, un-related design
+gap, invisible from inside either file alone. A Sonnet judge traced the actual gate code
+(not just the failure message), confirmed the fix itself was correct, confirmed a
+plausible-looking hypothesis in the failure context was WRONG (the obvious "P0-29 will fix
+this" assumption did not hold — P0-29's own Touch List never touches the actual culprit
+lines, confirmed by direct read, not by trusting the ordering rationale), and recommended
+widening the card's scope to fix the two newly-red assertions (updating their expected
+outcome to match new, correct behavior — not silencing or skipping them) plus filing a new,
+separate sibling card for the actual gate-granularity gap. **Lesson: "the worker's chosen
+test scope passed" is not "the fix is safe" — always run the FULL suite yourself before
+merging, exactly as RULE 5.4 already says, and when it turns up a failure outside the
+worker's Touch List, don't assume the nearest-sounding already-planned future card covers
+it; read that other card's actual Touch List before relying on it for sequencing.**
 
 **RULE 5.8 — a blocked-by-permission `git commit` is not a completion signal, and a worker
 must not treat it as one (P0-16, 2026-08-12, nukegraph_langgraph, same run as RULE 5.7).**
@@ -813,17 +795,10 @@ with no corresponding file change is incomplete, not paused."* Apply this to the
 dispatch prompt template alongside RULE 5.8's blocked-commit wording, not as a bolt-on only
 after the first occurrence per card.
 
-**Sibling case, confirmed 2026-08-13, P0-26b cycle 15:** the turn can also end one step LATER
-than RULE 5.10's original case — the worker issues the correct edit tool call, then the turn
-settles before that call's result is ever read back, and the worker (in its next turn) reports
-the edit as done without having verified it. Here, an independently-fetched-back verdict said
-the CARD.md addendum "wasn't visible" (a stale read, timing-related to when the controller
-refreshed the file mid-dispatch) yet the worker proceeded to issue the edit anyway from the
-verdict text alone — and the edit never actually landed (`grep` confirmed the target line
-unchanged). **Same root cause as RULE 5.10 (turn ends one step short of confirmed completion),
-different point in the sequence** — narrating-without-acting vs. acting-without-confirming.
-Controller-side mitigation (already RULE 5.4/5.6): never trust a worker's claimed edit; grep the
-actual file before treating a fix as landed, exactly as already required for test/suite results.
+**Sibling case (P0-26b cycle 15, 2026-08-13):** the turn can also end one step later — the
+edit tool call is issued but its result is never read back, and the worker reports the edit
+as done. `grep` confirmed the target line unchanged. Same failure to confirm completion,
+different point in the sequence; verify the actual file before crediting the edit (RULE 5.4/5.6).
 
 **RULE 5.11 — every Strong Card, GLOBAL, from this point forward, includes a Behavioral spec
 (Gherkin Given/When/Then) section, and every test the worker writes maps 1:1 to a scenario in
@@ -946,8 +921,8 @@ one-liner typed under time pressure.
 
 **RULE 7.6 — A passive broker controller's live event log is the fastest way to know exactly
 when a turn settled; prefer it to transcript-tailing alone (2026-08-12/13, session 5, card
-P0-26a).** Connecting a passive controller to the broker socket (register-only, never sends —
-see `scratchpad/broker-listener.mjs`, safe to run alongside any in-flight session) and reading
+P0-26a).** Connecting a passive controller to the Pi Broker socket (register-only, never sends;
+safe to run alongside any in-flight session) and reading
 its append-only log gives a precise, timestamped `agent_start` / `assistant_message` /
 `agent_end` / `agent_settled` stream for every registered session, all in one place, without
 re-parsing a growing `.jsonl` file per session or guessing from `pi` client CPU (which sits
@@ -1008,27 +983,13 @@ RAM figure alongside the mtplx/broker status line. This is in addition to, not i
 7.6's per-dispatch zombie check (which only looks at the *current* card's prior session); this
 rule is the periodic full-sweep across every session the broker knows about.
 
-**RULE 7.9 — mtplx (or any local inference engine) is not exempt from RAM hygiene; restart it
-when host memory pressure is high and no dispatch is in flight (2026-08-13, session 5, Joe
-explicit: "Qwen is not supposed to take that much ram after this task restart the server, must
-be in your rules. Global. If ram usage is too high due to the inference server restart it").**
-This is a GLOBAL rule (this file is globally in effect on this machine per the SessionStart
-hook, not scoped to one project) — applies to any Strong Card work, any local-model session,
-any project. A 27B q4 model server's baseline RSS (weights + active KV cache) is expected to sit
-in the tens-of-GB range on its own — that alone is not evidence of a leak. What IS a signal:
-host `PhysMem` used climbing toward the ceiling with little free headroom (rule of thumb: well
-under ~10-15% of total RAM free) *combined with* the inference engine's own RSS trending upward
-across dispatches rather than holding steady, or the operator naming it directly as excessive.
-**Do not restart mid-turn.** A live dispatch depends on the engine holding its KV cache/session
-state — killing it mid-generation corrupts or loses the in-flight turn. Sequence: (1) confirm no
-`pi` session is actively generating (RULE 7.6 — no unsettled turn on the broker), (2) if genuinely
-clear, restart the engine process (the exact command is in this machine's own model-serving
-recipe, e.g. `~/src/strong-cards/QWEN36-27B-FABLE-FUSION-MTPLX-RECIPE.md`'s `mtplx quickstart`
-invocation — reuse the recorded flags verbatim, do not improvise new ones), (3) health-check it
-responds again before resuming dispatch (RULE 7.1's health-check-before-dispatch pattern), (4)
-log the restart and the before/after RSS in whatever status line or queue file is tracking the
-current work, so a recurring pattern becomes visible over time rather than each restart looking
-like an isolated one-off.
+**RULE 7.9 — The local inference engine is not exempt from RAM hygiene (GLOBAL).**
+Use §9A for physical-footprint measurement, restart triggers and exact-flag restart; use
+RULE 7.6 to confirm no turn is in flight before stopping the server. Include host memory
+pressure (RULE 7.8) and the operator's report of excessive usage in that assessment.
+After restart, health-check the server before resuming dispatch and log the restart plus
+before/after physical footprint in the status/queue file. Operator instruction, 2026-08-13:
+"If ram usage is too high due to the inference server restart it."
 
 **RULE 7.10 — mtplx-served local inference engines run with paged KV cache quantization on by
 default (GLOBAL rule, 2026-08-13, Joe explicit: "New rule to qwen and inference server usage use
@@ -1148,10 +1109,8 @@ routinely exceeds the default profile's safe-prefill threshold (observed: 16,556
 tokens tripped `Blocked unsafe long-context MTP prefill path` under `performance-cold`,
 mid-turn, with no prior warning). Start with
 `mtplx quickstart --model <model> --port <port> --yes --reasoning off --profile sustained
---model-id <id>` — not a hand-reconstructed `python -m mtplx.server.openai` invocation (that
-requires exactly reproducing every flag correctly and is easy to get subtly wrong, e.g.
-picking up the wrong `python` interpreter and getting `ModuleNotFoundError: No module named
-'mtplx'`). If a local-mlx dispatch errors with this message mid-session, the session itself
+--model-id <id>` (launch via `mtplx quickstart`, per RULE 7.10).
+If a local-mlx dispatch errors with this message mid-session, the session itself
 is NOT broken — kill and restart the server with `--profile sustained`, then simply nudge the
 same session to continue; its accumulated context and progress are unaffected by a server-side
 restart.
@@ -1193,6 +1152,12 @@ next.
 **RULE 9.1 — Never call `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` directly.** Joe pays by
 subscription; a direct call bills twice.
 
+**RULE 9.2 — Holds under "GO" / "YOLO".** If a design appears to require a forbidden key,
+STOP and surface it.
+
+**RULE 9.3 — Only allowed direct keys:** NanoGPT, Chutes, Tavily, opencode-go — retrieved via
+`secret get NAME` (keychain, never `.env`).
+
 | Work | Route |
 |---|---|
 | Anthropic (Opus / Sonnet / Haiku) | Claude Code's `Agent` tool, `model:` parameter |
@@ -1208,7 +1173,7 @@ not assumed).** `pi` (real CLI, `/opt/homebrew/bin/pi`) is configured with three
 broker on port 18020 to Qwen Cloud's Token Plan, hosting `deepseek-v4-flash-0731` — already the
 session default provider/model in `~/.pi/agent/settings.json`, so a bare `pi -p "<card>"` hits
 DeepSeek Flash 0731 unless overridden). Dispatch shape — **`--no-autoformat` is mandatory
-whenever the target repo has no committed `biome.json`/`.prettierrc` (RULE 9.9 point 7);
+whenever the target repo has no committed `biome.json`/`.prettierrc` (RULE 9.8);
 without it, `pi-lens`'s Biome auto-format silently reformats every touched file regardless of
 model:**
 ```bash
@@ -1280,7 +1245,7 @@ discard the run as evidence for the routing question it was run to answer.
 > cover this either — §5 governs artifact-checkable claims (pass counts, "pre-existing"); actor
 > identity has no artifact-side falsification test, which is why it needs its own rule.
 
-**RULE 9.9 — Whitespace/formatting drift under Pi headless (`pi -p`) dispatch is a known
+**RULE 9.8 — Whitespace/formatting drift under Pi headless (`pi -p`) dispatch is a known
 defect of the harness, not a specific model; fix it mechanically, never via a repeated prose
 retry or a stronger-model escalation, and never trust the worker's own "restored" claim
 without a grep.**
@@ -1295,111 +1260,49 @@ Both workers' REPORT.md claimed the revert was done. Independent verification
 0% 2-space lines, identical to the pre-"fix" state. Same model, same harness, two different
 files/cards, same false-positive self-report on the same prose-instructed fix — this is a
 reproducible defect class, not a one-off card issue.
-1. Do not spend a second or third dispatch round asking the worker to "revert formatting" in
-   prose. This harness (Pi headless `pi -p` edit-tool dispatch), confirmed now across at least
-   two model tiers, cannot reliably reproduce byte-exact whitespace via a text-diff tool call,
-   and will report success regardless of whether it happened — treat that as established, not
-   as something worth re-testing per card or per model.
-2. On detecting the drift (leading-tab/space grep mismatch, or `diff --stat` wildly out of
-   proportion to the card's stated scope), fix it directly with a deterministic tool
-   (`expand -t <n>` / `unexpand` / the project's own formatter in write mode) applied to the
-   worker's already-logically-correct file, then diff the mechanically-fixed file against the
-   true pre-dispatch baseline (`git show <baseline-sha>:<file>`) to confirm the residual diff
-   is scoped to the intended logical change (RULE 3.3's Touch-List discipline still applies to
-   what remains).
-3. A "restored" self-report that a grep disproves is RULES §5.2's false-report pattern (the
-   closest analog to "pre-existing, unrelated" — a claim of completed work the artifact
-   contradicts), and RULE 4.1 already says a failure is judged **before** any retry or
-   remediation, no exceptions for "the fix is obviously mechanical." **Skipping the judge
-   dispatch because the fix looks self-evident is itself the violation** — on the incident
-   this rule is drawn from, the operator went straight from "grep disproved the self-report"
-   to running `expand` and re-diffing, with no Sonnet judge dispatched in between. The
-   mechanical fix in (2) turned out right, but that was verified after the fact by this
-   ruleset's authoring judge, not established by an actual judge call at the time. Going
-   forward: dispatch the Sonnet judge (`Agent` tool, `model: "sonnet"`, JUDGE-PROTOCOL §1)
-   with the card, both failed reports, and the grep evidence, and let it either confirm
-   "mechanical fix, no further model round" or send it back up the ladder — do not substitute
-   your own read for that dispatch, however confident. If the judge call runs in the
-   background, it is paired with an active poll (RULE 7.1) — the harness's completion
-   notification is a convenience, never the tracking mechanism (RULE 7.2); do not treat "no
-   notification yet" as "still running" without checking, and do not treat a notification
-   that never fires as "it must still be going."
-4. Any dispatch via Pi headless (`pi -p`), regardless of model, against a file with an
-   established style (2-space TS/JS, etc.) is checked with `grep -cP '^\t'` vs `^  ` on the
-   touched file(s) as a routine part of RULE 3.3 verification — not only after a fix round
-   already went wrong.
-5. **A preventive prose warning in the card text does not stop this defect either — do not
-   spend card-authoring effort trying.** SC-02 (`Pi_Broker`, `bin/pi-broker.mjs`/
-   `src/client.mjs`, 2026-08-11) dispatched with an explicit anti-reformatting paragraph
-   already written into the card ("Preserve the exact existing indentation style... Do not
-   run or apply any code formatter... Change ONLY the lines your task requires") — added
-   specifically because of this rule. The model reformatted `src/client.mjs` whole-file on
-   the *first* attempt anyway (`grep -c '^\t'` = 68, `grep -c '^  \S'` = 0, for a task
-   described as a small deterministic-error-surfacing change). Point 1 already established
-   that *corrective* retry prose fails; this confirms *preventive* prose fails too — the
-   defect is not a prompting gap, it is the harness's inability to hold a file's existing
-   whitespace convention through any edit, regardless of instruction or model. Stop writing
-   anti-reformat warnings into cards for Pi headless dispatch (they cost card-authoring effort
-   for zero measured effect); rely solely on point 4's routine mechanical grep/`expand` check
-   on every touched file, unconditionally.
-6. **Escalating to a stronger model tier does not fix this either — it fixes other defect
-   classes, not this one.** Same SC-02, same day: the retry for a *separate* defect (the
-   worker had skipped the required test-writing step) was escalated from `gpt-5.6-luna` to
-   `gpt-5.6-sol` — a stronger tier in the same `openai-codex` provider, same
-   `pi -p --provider openai-codex --model <id> --thinking <level> --no-session` harness. The
-   escalation correctly fixed the missing-tests gap (`gpt-5.6-sol` wrote all 3 required tests,
-   functionally verified: 8/8 passing, right names, right assertions) — but on the same
-   dispatch it ALSO reformatted the entire touched file (`test/broker.test.mjs`:
-   `grep -c '^\t'` = 208, 0 two-space lines). Two different models, identical harness,
-   identical defect signature. Conclusion: "escalate to a smarter model" is a valid fix-loop
-   move for defect classes like missing/incomplete work, but it is now disproven as a fix for
-   whitespace/formatting drift specifically — that class is routed only through point 2's
-   mechanical fix plus point 3's judge dispatch, never through a model-tier bump.
-7. **ROOT CAUSE FOUND (2026-08-11, Sonnet investigation, superseding the "harness, mechanism
-   unknown" framing of points 1-6): the reformatting is `pi-lens` (`npm:pi-lens`, listed in
-   `~/.pi/agent/settings.json` → `packages`, globally installed), not Pi core and not the
-   model.** `pi-lens` runs an auto-format pipeline step at `agent_end`
-   (`~/.pi/agent/npm/node_modules/pi-lens/dist/index.js`, `runFormatPhase`/`handleAgentEnd`)
-   that shells out to Biome (`.../pi-lens/dist/clients/formatters.js`, `biomeFormatter`,
-   `biome format --write <file>`) on every `.js/.jsx/.mjs/.ts/.tsx` file touched by an
-   edit/write tool call, governed by a `"smart-default"` policy
-   (`.../pi-lens/dist/clients/tool-policy.js`) that fires even with **no** `biome.json` /
-   `.prettierrc` in the target repo — exactly `Pi_Broker`'s state. With no config, Biome
-   applies its own bare defaults (`indentStyle: tab`, `quoteStyle: double`,
-   `trailingCommas: all`), which is a byte-exact match for every symptom in points 1-6,
-   including brand-new files (nothing to violate, so Biome's tab-default wins outright) and
-   the deferred timing that produced the false "formatting was preserved" self-reports (the
-   model's own tool-result view of its diff is correct; the file on disk is silently rewritten
-   *after* the turn ends, by a process the model has no visibility into or control over). This
-   is why the defect reproduced identically across `gpt-5.6-luna` and `gpt-5.6-sol` — it runs
-   in the harness's post-tool-call pipeline regardless of which model or provider issued the
-   edit, confirmed via `~/.pi-lens/projects/` tracked-state entries for every affected worktree
-   and `~/.pi-lens/logs/<date>.jsonl`, which records `formattersUsed`/`formatChanged` per file
-   and would have caught this on the very first dispatch had it been checked.
-   **The fix is a flag, not a workaround:** pass `--no-autoformat` on every headless
-   `pi -p ...` dispatch against a repo with no committed `biome.json`/`.prettierrc` (this maps
-   to `format.enabled=false` via `pi.registerFlag` in `pi-lens`'s `lens-flag-registry.js`, and
-   is scoped to the format pipeline only — it does **not** touch `pi-permission-system`, a
-   fully separate package, so RULE 3.6's no-delete/no-escape posture is unaffected). Where the
-   target repo's own Touch List permits adding a config file, committing a real `biome.json`
-   pinning the project's actual style (2-space, no tabs) is the stronger structural fix — it
-   flips `pi-lens`'s policy from "smart-default" to "config-first" so the behavior is correct
-   for every future dispatcher, not just ones that remember the flag — but do not add one
-   opportunistically to a repo whose card/plan Touch List doesn't already include it (doctrine
-   §8, no scope creep to fix tooling). **Points 1-6 remain correct as symptom-level triage**
-   (grep-verify, mechanical `expand` fix, judge-before-retry, escalation doesn't help) for any
-   case where `--no-autoformat` wasn't set before dispatch, or for a repo where a committed
-   formatter config legitimately differs from 2-space (in which case the drift is real
-   config-driven reformatting, not this defect, and should be diagnosed fresh, not assumed to
-   be RULE 9.9). Going forward, prefer prevention: set `--no-autoformat` in the dispatch
-   command itself and skip points 1-6 entirely rather than fixing the drift after the fact.
-   **Stronger than the per-dispatch flag: `~/.pi-lens/config.json` with `{"format":
-   {"enabled": false}, "autofix": {"enabled": false}}`** disables autoformat/autofix
-   machine-wide as the default (resolution order per `pi-lens`'s own docs: env var > CLI flag >
-   nearest `.pi-lens.json` > this global file > built-in default) — deployed 2026-08-11 so no
-   dispatch, from any harness or broker, needs `--no-autoformat` remembered per command. A
-   project that genuinely wants pi-lens's formatting can still opt in with its own
-   `.pi-lens.json`, which overrides this global default.
+
+**Root cause (2026-08-11, Sonnet investigation): `pi-lens`, not Pi core or the model.**
+The globally installed `npm:pi-lens` package (`~/.pi/agent/settings.json` → `packages`)
+runs `runFormatPhase`/`handleAgentEnd` at `agent_end`
+(`~/.pi/agent/npm/node_modules/pi-lens/dist/index.js`). Its `dist/clients/formatters.js`
+`biomeFormatter` runs `biome format --write <file>` on touched `.js/.jsx/.mjs/.ts/.tsx`
+files. `dist/clients/tool-policy.js` uses a "smart-default" policy even without a committed
+`biome.json`/`.prettierrc`. Biome's bare defaults (tabs, double quotes, trailing commas)
+matched the drift. The rewrite occurs after the model's last tool-result view, explaining
+why its "preserved" report can disagree with disk. Evidence: `~/.pi-lens/projects/` and
+`~/.pi-lens/logs/<date>.jsonl` (`formattersUsed`/`formatChanged`).
+
+**Prevent it in configuration, not prose.** Pass `--no-autoformat` on every headless
+`pi -p` dispatch against a repo with no committed `biome.json`/`.prettierrc` (RULE 9.4).
+This sets `format.enabled=false` through `pi.registerFlag` in `lens-flag-registry.js`;
+it does not affect the separate `pi-permission-system` or RULE 3.6's sandbox posture.
+A committed formatter config pinning the project's real style is the stronger structural fix,
+but add one only when the card's Touch List permits it (doctrine §1.8).
+Machine-wide prevention, deployed 2026-08-11: `~/.pi-lens/config.json` containing
+`{"format": {"enabled": false}, "autofix": {"enabled": false}}`. Resolution order:
+env var > CLI flag > nearest `.pi-lens.json` > global file > built-in default. A project's
+`.pi-lens.json` can opt back in, so verify the effective configuration before relying on
+that global default. Prevention avoids the repair loop; artifact verification still applies.
+
+**Prose retries, preventive warnings and model escalation do not fix this defect.**
+SC-02's explicit anti-formatting card paragraph still yielded 68 tab-indented lines and zero
+2-space code lines in `src/client.mjs`. Escalating from Luna to Sol fixed a separate missing-test
+issue (all 3 required tests written, 8/8 passing) but left 208 tab-indented lines and zero
+2-space lines in `test/broker.test.mjs`. Escalation remains valid for other defect classes.
+
+**Fallback triage** when prevention was absent, or when a committed formatter config differs
+from the expected style (diagnose that configuration fresh; do not assume this defect):
+
+1. **Detect routinely:** check `grep -cP '^\t'` versus `^  ` on every touched file with an
+   established style, as part of RULE 3.3 verification. Disproportionate diff size is another
+   signal. Never credit a worker's "restored" claim without checking the artifact.
+2. **Judge before any retry or fix (RULE 4.1).** A disproven restoration claim is RULE 5.2's
+   false-report pattern. Give the judge the card, failed reports and grep evidence; obtain
+   its remediation decision before acting, even when the fix looks mechanical. Select the
+   judge per `JUDGE-PROTOCOL.md` §0.5/§1 and actively poll it per RULE 7.1/7.2.
+3. **Fix mechanically:** use `expand -t <n>`, `unexpand` or the project's formatter on the
+   already-logically-correct file, then diff against `git show <baseline-sha>:<file>` to
+   confirm only the intended logical change remains within RULE 3.3's Touch List.
 
 > **Why.** See incident narrative above, verbatim from `Pi_Broker` SC-03/SC-04 (2026-08-11).
 > The failure was caught only because the operator verified the artifact instead of the
@@ -1416,17 +1319,11 @@ reproducible defect class, not a one-off card issue.
 > of this rule exist because "the fix was mechanical and correct" is not a substitute for
 > "a judge was actually asked."
 
-**RULE 9.2 — Holds under "GO" / "YOLO".** If a design appears to require a forbidden key,
-STOP and surface it.
-
-**RULE 9.3 — Only allowed direct keys:** NanoGPT, Chutes, Tavily, opencode-go — retrieved via
-`secret get NAME` (keychain, never `.env`).
-
 ---
 
-## §9.8 — Local inference server memory hygiene
+## §9A — Local inference server memory hygiene
 
-**RULE 9.8.1 — Check the local model server's REAL memory with `footprint`, never `ps`/RSS.**
+**RULE 9A.1 — Check the local model server's REAL memory with `footprint`, never `ps`/RSS.**
 ```bash
 footprint -p <server-pid> | grep phys_footprint
 ```
@@ -1436,7 +1333,7 @@ Activity Monitor). Unified-memory GPU buffers are real physical pages the proces
 standard `ps` accounting does not surface them for this kind of process. Do not trust `ps` for
 any local-model memory question; use `footprint -p <pid>` or Activity Monitor's Memory column.
 
-**RULE 9.8.2 — A long-lived local server accumulates memory across dispatches; check it
+**RULE 9A.2 — A long-lived local server accumulates memory across dispatches; check it
 periodically, not just when something feels slow.** After every few Strong Card dispatches to
 the local worker (or on any swap-pressure report), run the `footprint` check above. There is no
 purge/cache-clear endpoint on the mtplx server (`/reset`, `/purge`, `/cache/clear`,
@@ -1447,7 +1344,7 @@ default) and is **not** the source of unbounded growth — the growth is elsewhe
 long-lived process (KV-cache/buffer accumulation across many separate requests over days of
 uptime), so lowering that setting does not fix this.
 
-**RULE 9.8.3 — Restart trigger: physical footprint materially exceeds a healthy baseline for
+**RULE 9A.3 — Restart trigger: physical footprint materially exceeds a healthy baseline for
 the model, while idle (no request in flight).** There is no universal number — set the
 baseline from the model's own size (a 27B 4-bit model's healthy steady-state is roughly
 15-30GB even at large context; anything holding 2-3x that with nothing running is a candidate
@@ -1457,7 +1354,7 @@ mid-dispatch loses that card's in-flight work; either wait for the current dispa
 naturally or, if urgent, explicitly kill the dispatch and re-queue the card fresh, operator's
 call each time.
 
-**RULE 9.8.4 — Restart with the exact prior flags, not a bare quickstart.** Capture the running
+**RULE 9A.4 — Restart with the exact prior flags, not a bare quickstart.** Capture the running
 process's full command line (`ps -o command= -p <pid>`) before stopping it, so the restart
 reproduces the same model, `--depth`, `--reasoning-mode`, `--paged-kv-quantization`, etc. — a
 silently-different config on restart is a correctness risk for whatever dispatches next, not
@@ -1490,9 +1387,9 @@ length across the specific dispatches involved.
 
 ---
 
-## §9.9 — Local inference server: set a non-zero repetition penalty before dispatching
+## §9B — Local inference server: set a non-zero repetition penalty before dispatching
 
-**RULE 9.9.1 — `mtplx quickstart` (and equivalent local servers) default to
+**RULE 9B.1 — `mtplx quickstart` (and equivalent local servers) default to
 `frequency_penalty: 0.0` / `presence_penalty: 0.0`. Set both to a non-zero value before any long
 agentic dispatch — but keep it modest for CODE generation, not chat-tuned.** With both at zero,
 nothing in the sampler discourages re-emitting an n-gram that has already appeared in-context —
@@ -1510,7 +1407,7 @@ on `mtplx quickstart`. Verify live with:
 mtplx settings --port <port> | grep -iE "penalty"
 ```
 
-**RULE 9.9.1a — On `mtplx` < 2.5.3, an anonymous/no-API-key client's explicit sampling
+**RULE 9B.1a — On `mtplx` < 2.5.3, an anonymous/no-API-key client's explicit sampling
 parameters (temperature/top_p/top_k/penalties) may be silently treated as HINTS rather than
 enforced.** Fixed in 2.5.3 ("anonymous API clients now get standard OpenAI semantics for
 explicit request parameters"). Most local dispatch setups run with no API key
@@ -1520,7 +1417,7 @@ long decodes and a `presence_penalty`/`frequency_penalty` HTTP 500 on `mtp_batch
 trusting that a configured penalty is actually taking effect. Confirm version with
 `mtplx --version`.
 
-**RULE 9.9.2 — A verbatim self-repetition loop (the same sentence generated dozens of times, no
+**RULE 9B.2 — A verbatim self-repetition loop (the same sentence generated dozens of times, no
 tool calls, until manually interrupted) is a DIFFERENT symptom from §10.5's frozen-JSON-as-text —
 distinguish them by whether real natural-language prose repeats verbatim (this rule) vs. a
 malformed tool-call payload sits frozen once (§10.5).** Root-cause investigation (2026-08-14,
@@ -1529,15 +1426,15 @@ two independent things, not one:
 - **A stuck agentic state** — the model re-diagnoses the same unresolved problem across several
   turns with no successful tool call, each restatement slightly longer, until one generation
   balloons into hundreds/thousands of tokens of the identical sentence repeated in place.
-- **Zero anti-repetition sampling pressure** (RULE 9.9.1) — nothing stops the degenerate
+- **Zero anti-repetition sampling pressure** (RULE 9B.1) — nothing stops the degenerate
   continuation once it starts.
 Neither cause alone fully explains the incident: a stuck state with real repetition penalty set
 usually still produces *varied* (if unproductive) restatements rather than verbatim looping; a
 repetition penalty alone does not prevent the model getting stuck in the first place. Fix the
-sampling gap (9.9.1) as a standing default; if stalls still recur, that is a separate agentic
+sampling gap (9B.1) as a standing default; if stalls still recur, that is a separate agentic
 harness/tool-availability gap to investigate on its own terms, not a sampling problem.
 
-**RULE 9.9.3 — Don't blame the quantization level for a repetition loop without log evidence.**
+**RULE 9B.3 — Don't blame the quantization level for a repetition loop without log evidence.**
 The same incident's raw `tok_s` trend (steady ~44 tok/s at low context down to ~8-11 tok/s by
 ~80k prompt tokens — a real, separate ~5x slowdown from KV-quant dequant + prefill cost
 compounding with context) was initially suspected as the loop's cause. It wasn't: the loop fired
@@ -1549,7 +1446,7 @@ presence/absence) before attributing either one to the other.
 
 ---
 
-## §9.10 — PATTERN (2026-08-14/15, 2 occurrences): a worker tries to `git rm`/`git add -f` + `git rm --cached` an untracked scratch file, believing it deletes the file
+## §9C — PATTERN (2026-08-14/15, 2 occurrences): a worker tries to `git rm`/`git add -f` + `git rm --cached` an untracked scratch file, believing it deletes the file
 
 Observed twice in one Qwen3.8-27B (mtplx, caveman-compressed output) dispatch, on two different
 self-created scratch spec files (`vpcheck.spec.ts`, then `dbg.spec.ts`). Both times the worker ran
@@ -1568,20 +1465,20 @@ retrying it exactly does nothing new.
 **Fix applied**: operator/controller sent the direct correction (`rm -f <path>`) into the Pi
 session both times; worked immediately both times once sent.
 
-**RULE 9.10.1 — a controller watching a worker session should treat "same failing check, same
+**RULE 9C.1 — a controller watching a worker session should treat "same failing check, same
 command, no self-correction across 2+ attempts" as a nudge trigger, not a wait-and-see.** Don't
 wait for a 3rd occurrence once the pattern is this mechanical (untracked file + git index command
 is deterministically wrong every time, not intermittent) — a one-line direct correction costs
 far less than another full model turn spent re-deriving the same wrong path.
 
-**RULE 9.10.2 — scratch/debug spec files a worker creates for its own diagnosis (not part of the
+**RULE 9C.2 — scratch/debug spec files a worker creates for its own diagnosis (not part of the
 card's deliverable) should be removed with plain `rm -f`, never git commands, since they were
 never staged in the first place.** This applies to any worker, not just Qwen — the mistake is
 about git semantics, not model capability.
 
 ---
 
-## §9.11 — PERMANENT RULE: give each parallel dispatch its own local test-server port
+## §9D — PERMANENT RULE: give each parallel dispatch its own local test-server port
 
 Observed 2026-08-15: five cards (P1-05, P1-06, P1-07, P1-09, P1-10) were dispatched in parallel
 against the same merged trunk, each writing its own Playwright test that spins a local uvicorn
@@ -1596,19 +1493,19 @@ parallel batch. Each worker behaved reasonably given only its own card's context
 was invisible to any single worker because worktrees are filesystem-isolated but the local network
 port space is not.
 
-**RULE 9.11.1 — before dispatching N cards in parallel that each spin a local dev/test server,
+**RULE 9D.1 — before dispatching N cards in parallel that each spin a local dev/test server,
 assign each card a distinct port explicitly in its CARD-*.md** (e.g. "use port 5178+N for your
 local test server, do not use any other port and do not ask the operator to free a port you do not
 own"). Do not leave port choice to convention-following, since parallel workers converge on the
 same precedent independently.
 
-**RULE 9.11.2 — if a worker reports a port conflict and asks the operator to free it, the
+**RULE 9D.2 — if a worker reports a port conflict and asks the operator to free it, the
 controller must check `lsof -i :<port>` and `ps -p <pid>` BEFORE killing anything** — the process
 may belong to another live, in-progress dispatch, not a stale leftover. Killing it would corrupt
 that other dispatch's run. Redirect the blocked worker to an unused port instead of freeing the
 one it collided on.
 
-**RULE 9.11.3 — a new port chosen for a test/dev server must be validated against EVERY proxy
+**RULE 9D.3 — a new port chosen for a test/dev server must be validated against EVERY proxy
 mechanism the harness's frontend relies on, not just the one the author happened to exercise
 first.** Confirmed 2026-08-29, nukegraph P6-06: a new real-backend E2E Playwright spec picked a
 non-default backend port (5179/5180, deliberately avoiding a different, already-documented
@@ -1632,7 +1529,7 @@ one the author's own manual testing happened to touch.
 
 ---
 
-## §9.12 — PERMANENT RULE: a coder dispatch's own `git commit` can be categorically blocked by
+## §9E — PERMANENT RULE: a coder dispatch's own `git commit` can be categorically blocked by
 sandbox/permission tooling, and that is a distinct failure shape from a stall
 
 Confirmed 2026-08-29, nukegraph P6-06: Pi Broker's permission system matched the worker's
@@ -1644,7 +1541,7 @@ identical denial. The controller confirmed the worker's staged changes were genu
 and coherent (diff review, not self-report — RULE 5.1) and committed them manually from outside
 the sandbox.
 
-**RULE 9.12.1 — treat "identical command, identical hard denial, no interactive menu, 2+
+**RULE 9E.1 — treat "identical command, identical hard denial, no interactive menu, 2+
 repeats" as its own diagnostic signature, distinct from the y/n/s/r stall.** The stall pattern
 (§13) is "waiting on a decision no one is answering"; this pattern is "the tooling has already
 decided no, permanently, for this exact command shape." Retrying does not help either one, but
@@ -1652,7 +1549,7 @@ the fix differs: a stall needs an answer sent in; a hard denial needs the contro
 outside the sandbox on the worker's behalf, or to fix the permission rule itself if the dispatch
 will recur.
 
-**RULE 9.12.2 — the controller has standing authorization to complete a coder dispatch's own
+**RULE 9E.2 — the controller has standing authorization to complete a coder dispatch's own
 `git commit` from outside the sandbox, but only after independently confirming the staged
 change is genuinely finished and coherent — same evidence bar as any other acceptance check
 (§5), never on the worker's say-so alone.** This is not a general license to commit on a
@@ -2104,6 +2001,8 @@ reports counts or verdicts derived from it. Distinct from §16 (wrong target ent
 target producing a result whose apparent meaning (absence) does not match its actual cause
 (non-resolution).
 
+---
+
 ## §18 — PERMANENT RULE: a UI-touching card is not done on green tests alone — it needs a visual-verification gate
 
 **What happened.** The Composer had 112 real Playwright E2E specs asserting DOM state (element
@@ -2128,6 +2027,8 @@ human-or-model look at what actually shipped. Store the captured evidence and ve
 existing `docs/reviews/<run_id>/` audit-trace convention (§10) — never job-tmp/scratch. Full
 design reference: `docs/plan/strong-cards/reference/ui-visual-verification-gate.md` in whichever
 project repo adopted this rule first (The Composer, 2026-09-05).
+
+---
 
 ## §19 — PERMANENT RULE: concurrent dispatches never share one worktree — one worktree per in-flight agent, no exceptions
 
@@ -2163,6 +2064,8 @@ separation with serialized merge, or a scratch-then-reconcile pattern — never 
 worktree because it's convenient." Confirmed 2026-09-05 on The Composer's TUT-02..10 tutorial
 batch remediation.
 
+---
+
 ## §20 — PERMANENT RULE: code comments must read like a staff engineer wrote them, never like an LLM narrating its own output
 
 **What happened.** Dispatched coders (frontier models included) default to a verbose,
@@ -2191,6 +2094,8 @@ per-project (see `feedback_terse_senior_code_comments` in project memory) into p
 cross-project doctrine — every dispatch prompt going forward should carry this constraint
 explicitly, not rely on the coder inferring it.
 
+---
+
 ## §21 — PERMANENT RULE: every frozen gate has an executable fixture-and-command preflight
 
 **What happened.** The Composer LC-02b card was frozen after two BREAK reviews, but it joined two independently risky deliverables: the chain-strip overlay and a five-consumer sibling-row allocator. Its browser spec covered one chain-bearing node while Gate 5 required a >=50-node tangled fixture, simultaneous lesson/run-status/output-preview/X-Ray/strip rows, stable-paint timing, overflow and composite cases. The frozen card named those outcomes but no pre-dispatch proof established that the required fixture, setup seam, and exact test command existed together. A Luna attempt could add only partial assertions; a Terra judge proved the card had to split before a valid retry.
@@ -2199,17 +2104,23 @@ explicitly, not rely on the coder inferring it.
 
 The ledger is compiled before BREAK under `CONSTRUCTION-PROTOCOL.md` PB0-PB10. Every new and inherited obligation maps to reads, writes, predicates, rollback/frame branches, named tests and controller receipts. Every critical predicate has a one-change invalid fixture, restoration and implementation mutant that must fail its named assertion. Setup/import failures are invalid probes. A table-name list or aggregate count is not proof of complete semantic coverage.
 
+---
+
 ## §22 — PERMANENT RULE: independent adversarial boundaries are a split signal even when they live in one file
 
 **What happened.** Composer H-03a looked small by Touch List (one new preview module, one export file, one route, one test), but repeated proof-backed re-BREAK passes exposed independent security systems hidden inside that file: temporary-root creation, descriptor/path traversal, Git-tree extraction, live-source revision reads, child-process lifecycle, error containment, and source-derived response suppression. A narrow file count did not make it a narrow card. Each remediation made the card longer while leaving another untested adversarial boundary, which is the same throughput and acceptance failure as an oversized multi-file card.
 
 **How to apply.** Before freezing, enumerate the card's independent adversarial boundaries, not just files: filesystem confinement, archive/tree extraction, subprocess lifecycle, authorization/staleness, secret/redaction egress, and equivalent categories. A card that contains more than two such boundaries must either (a) split into an infrastructure/security-kernel card and a separately frozen feature/route card, or (b) carry a proof-backed written justification that the boundaries share one minimal mechanism and one bounded fixture surface. If a second re-BREAK cycle discovers a previously unenumerated adversarial boundary, stop adding requirements to the same card: mark it DRAFT, run a Sol-medium re-grounding/split pass, and obtain two fresh independent BREAK reports for each resulting card. The ledger must include one deliberate attack fixture for every enumerated boundary. File count, token count, and a green prose review never override this rule. The same stop applies when a new independent behavioral/effect boundary appears after a structural remediation: preserve the parent obligation map, retain rejected revisions, and split instead of appending r6-style requirements.
 
+---
+
 ## §23 — PERMANENT RULE: UI slice gates must prove a delta against the live baseline and honor global layout ownership
 
 **What happened.** Composer LC-02b-R1 split the chain-strip overlay from the shared sibling-row allocator. Its proposed whole-document secret assertion used a fixture whose provider evidence was already emitted by the shipped `ProviderMarker`, so the new strip could neither make that assertion green nor own the unrelated repair. It also promised a fixed row in a canvas band where an existing owner ruling required a shared allocator for independently-toggleable rows. The card was narrow on paper but impossible at its declared boundary.
 
 **How to apply.** Before freezing a UI slice, run its exact fixture against the current rendered application and record the baseline result for every whole-page or accessibility assertion. A slice may claim a full-document absence/property only if the baseline already satisfies it or the Touch List explicitly owns every existing violating producer. Otherwise scope the assertion to the new subtree and create a separate security/remediation card for the baseline leak. Before assigning a fixed position, key binding, global state, or shared DOM slot, search the current owner rulings and live consumers. A slice cannot bypass an adopted shared allocator or coordination mechanism; either include the minimal common mechanism with a concurrent-feature browser gate, or split at a boundary that leaves no shipped collision path. The ledger records the baseline command/result and the specific coexisting feature fixture, not just the proposed feature's happy path.
+
+---
 
 ## §24 — PERMANENT RULE: composite UI proof may not name an unnamed “existing seam”
 
@@ -2219,6 +2130,8 @@ The ledger is compiled before BREAK under `CONSTRUCTION-PROTOCOL.md` PB0-PB10. E
 
 **Escalation.** If a re-BREAK finds an omitted conditional consumer after the card already remediated its census once, do not keep appending branches to a feature-plus-allocator card. Re-ground and split the allocator into its own prerequisite card over the existing consumers, then let the new feature consume that frozen allocator in a successor card. The allocator card's census must be generated from a documented source search and include every conditional branch; the successor may prove its one new claimant against the frozen allocator contract. This prevents an expanding UI interaction matrix from becoming a hidden 150k-context card.
 
+---
+
 ## §25 — PERMANENT RULE: coordinate a broad UI migration through inert preparation, then one atomic activation
 
 **What happened.** Composer SRA-01 tried to move every competing below-node row at once. It touched nine product files, had to solve producer-specific geometry and DOM boundaries, and still could not name a real composite fixture. Splitting consumers naively would ship mixed absolute and flow positions that collide. The safe decomposition was: one inert allocator contract, one default-legacy preparation card per incompatible producer family, then one bounded atomic activation once all producers can participate.
@@ -2226,6 +2139,8 @@ The ledger is compiled before BREAK under `CONSTRUCTION-PROTOCOL.md` PB0-PB10. E
 **How to apply.** For a shared UI coordinator that has more than three live consumer files, first draft an inert foundation whose default has no visible effect. Then prepare incompatible producers in separate cards with explicit legacy-versus-coordinated compatibility modes; each preparation card proves the default legacy behavior is unchanged. Only after those cards freeze may one activation card migrate all mutually competing rows atomically. The activation card owns the real composite browser fixture and must prove no mixed legacy/coordinated collision path ships. Do not call the preparation cards implementation of the user-visible feature, and do not let a successor feature consume the coordinator until the activation card is frozen.
 
 **Migration-map addendum.** Every preparation card must explicitly own the CSS and markup conversion that makes its claimant contribute measurable normal-flow height; an absolute-positioned child inside a flow slot is not migration. The serial map must also name an owner for every deferred consumer's slot addition or extension before that consumer can claim the frozen coordinator. Pre-edit hygiene records a clean status snapshot together with the base SHA, so allowlisted implementation paths cannot hide pre-existing changes.
+
+---
 
 ## §26 — PERMANENT RULE: an inert foundation card freezes an executable API contract, not API-shaped prose
 
